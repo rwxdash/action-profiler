@@ -43,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
             });
         }
     }
-    let program: &mut TracePoint = ebpf.program_mut("profiler").unwrap().try_into()?;
+    let program: &mut TracePoint = ebpf.program_mut("handle_exec").unwrap().try_into()?;
     program.load()?;
     program.attach("sched", "sched_process_exec")?;
 
