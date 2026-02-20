@@ -18,7 +18,10 @@ use tokio::{io::unix::AsyncFd, signal};
 use tracing::{debug, info, warn};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::{event::ProcessEventRecord, utils::{name_to_bytes, scan_ignored_pids}};
+use crate::{
+    event::ProcessEventRecord,
+    utils::{name_to_bytes, scan_ignored_pids},
+};
 
 #[derive(Parser)]
 #[command(name = "profiler", about = "eBPF process event tracer")]
@@ -79,7 +82,12 @@ async fn main() -> anyhow::Result<()> {
         if pids.is_empty() {
             warn!("No running processes matched patterns: {:?}", patterns);
         } else {
-            info!("Ignoring {} processes matching {:?}: {:?}", pids.len(), patterns, pids);
+            info!(
+                "Ignoring {} processes matching {:?}: {:?}",
+                pids.len(),
+                patterns,
+                pids
+            );
         }
     }
 
