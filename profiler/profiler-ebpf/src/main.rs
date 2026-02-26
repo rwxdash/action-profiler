@@ -33,6 +33,9 @@ static IGNORED_NAMES: HashMap<[u8; 16], u8> = HashMap::with_max_entries(64, 0);
 #[map] // Stores active PIDs to cascade the ignore to children
 static IGNORED_PIDS: HashMap<u32, u8> = HashMap::with_max_entries(10240, 0);
 
+#[map]
+static EXEC_START: HashMap<u32, u64> = HashMap::with_max_entries(10240, 0);
+
 // Temporary stash for argv between sys_enter_execve → sched_process_exec.
 // sys_enter_execve writes here (argv is in user memory at that point).
 // sched_process_exec reads, copies into the event, and deletes.
@@ -181,7 +184,7 @@ fn try_handle_exec(ctx: &RawTracePointContext) -> Result<u32, i64> {
         }
     };
     event.exit_code = 0;
-
+    event.duration_ns = 0;
     event.name = bpf_get_current_comm().map_err(|e| e as i64)?;
 
     // Read filename via CO-RE: linux_binprm->filename
@@ -223,6 +226,8 @@ fn try_handle_exec(ctx: &RawTracePointContext) -> Result<u32, i64> {
             );
         }
         buf.submit(0);
+
+        let _ = EXEC_START.insert(&pid, &event.time_ns, 0);
     }
 
     aya_log_ebpf::info!(ctx, "Successfully intercepted exec from PID: {}", event.pid);
@@ -257,14 +262,24 @@ fn try_handle_exit(ctx: &TracePointContext) -> Result<u32, i64> {
     let _ = IGNORED_PIDS.remove(&pid);
 
     if was_ignored {
+        let _ = EXEC_START.remove(&pid);
         return Ok(0);
     }
 
     let event_ptr = SCRATCH.get_ptr_mut(0).ok_or(0i64)?;
     let event = unsafe { &mut *event_ptr };
 
-    event.time_ns = unsafe { bpf_ktime_get_ns() };
+    let now = unsafe { bpf_ktime_get_ns() };
+    event.time_ns = now;
     event.event_type = 1; // exit
+
+    // Compute duration from start time
+    event.duration_ns = if let Some(start) = unsafe { EXEC_START.get(&pid) } {
+        now - *start
+    } else {
+        0 // No matching exec (e.g. process was already running when profiler started)
+    };
+    let _ = EXEC_START.remove(&pid);
 
     let pid_tgid = bpf_get_current_pid_tgid();
     event.pid = pid_tgid as u32;

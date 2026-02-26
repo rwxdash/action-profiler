@@ -11,6 +11,7 @@ pub struct ProcessEvent {
     pub time_ns: u64,
     pub event_type: u8,                           // 0=exec, 1=exit
     pub exit_code: u32,                           // -
+    pub duration_ns: u64,                         // -
     pub uid: u32,                                 // User ID
     pub gid: u32,                                 // Group ID
     pub pid: u32,                                 // Process ID
