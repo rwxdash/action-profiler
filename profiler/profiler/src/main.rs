@@ -10,7 +10,7 @@ use std::{
 
 use aya::{
     maps::{HashMap, RingBuf},
-    programs::TracePoint,
+    programs::{RawTracePoint, TracePoint},
 };
 use clap::Parser;
 use profiler_common::ProcessEvent;
@@ -23,12 +23,24 @@ use crate::{
     utils::{name_to_bytes, scan_ignored_pids},
 };
 
+// Note: "sh" is excluded — it's often used as `sh -c "real command"` and
+// our fork inheritance would hide the child process too.
+const DEFAULT_IGNORE: &[&str] = &[
+    "awk", "basename", "cat", "cut", "date", "echo", "envsubst", "expr", "dirname", "grep", "head",
+    "id", "ip", "ln", "ls", "lsblk", "mkdir", "mktemp", "mv", "ps", "readlink", "rm", "sed", "seq",
+    "uname", "whoami",
+];
+
 #[derive(Parser)]
 #[command(name = "profiler", about = "eBPF process event tracer")]
 struct Args {
     /// Output file path for JSONL events (defaults to stdout)
     #[arg(short, long)]
     output: Option<PathBuf>,
+
+    /// Disable the default ignore list (awk, cat, grep, ls, etc.)
+    #[arg(long)]
+    no_default_ignore: bool,
 }
 
 #[tokio::main]
@@ -61,6 +73,17 @@ async fn main() -> anyhow::Result<()> {
 
     let mut ignored_names: HashMap<_, [u8; 16], u8> =
         HashMap::try_from(ebpf.map_mut("IGNORED_NAMES").unwrap())?;
+
+    // Seed default ignore list (unless opted out)
+    if !args.no_default_ignore {
+        for cmd in DEFAULT_IGNORE {
+            ignored_names.insert(name_to_bytes(cmd), 1, 0)?;
+        }
+        info!(
+            "Default ignore list active ({} commands). Use --no-default-ignore to disable.",
+            DEFAULT_IGNORE.len()
+        );
+    }
 
     for cmd in ignore_list {
         ignored_names.insert(name_to_bytes(cmd.trim()), 1, 0)?;
@@ -109,10 +132,10 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Load and attach the tracepoint program
-    let program_exec: &mut TracePoint = ebpf.program_mut("handle_exec").unwrap().try_into()?;
+    // Load and attach the raw tracepoint for exec (gives CO-RE access to linux_binprm)
+    let program_exec: &mut RawTracePoint = ebpf.program_mut("handle_exec").unwrap().try_into()?;
     program_exec.load()?;
-    program_exec.attach("sched", "sched_process_exec")?;
+    program_exec.attach("sched_process_exec")?;
 
     let program_fork: &mut TracePoint = ebpf.program_mut("handle_fork").unwrap().try_into()?;
     program_fork.load()?;
@@ -121,6 +144,14 @@ async fn main() -> anyhow::Result<()> {
     let program_exit: &mut TracePoint = ebpf.program_mut("handle_exit").unwrap().try_into()?;
     program_exit.load()?;
     program_exit.attach("sched", "sched_process_exit")?;
+
+    // Attach sys_enter_execve to capture argv (user-space memory, stashed for handle_exec)
+    let program_sys_exec: &mut TracePoint = ebpf
+        .program_mut("handle_sys_enter_execve")
+        .unwrap()
+        .try_into()?;
+    program_sys_exec.load()?;
+    program_sys_exec.attach("syscalls", "sys_enter_execve")?;
 
     // Set up the event ring buffer reader
     let ring_buf = ebpf.take_map("EVENTS").unwrap();

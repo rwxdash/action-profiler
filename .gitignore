@@ -103,3 +103,6 @@ __tests__/runner/*
 
 # Tmp files
 tmp/
+
+# Docs
+docs/
