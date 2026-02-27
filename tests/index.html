@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Action Profiler</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; color: #e0e0e0; font-family: 'JetBrains Mono', monospace; }
+  #controls {
+    padding: 16px 24px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+    border-bottom: 1px solid #333;
+  }
+  #controls label { font-size: 13px; color: #aaa; }
+  #controls input[type="file"] { font-size: 13px; }
+  #controls input[type="checkbox"] { margin-right: 4px; }
+  #controls select, #controls input[type="number"] {
+    background: #16213e; color: #e0e0e0; border: 1px solid #444;
+    padding: 4px 8px; border-radius: 4px; font-size: 13px;
+  }
+  #stats {
+    padding: 12px 24px;
+    font-size: 13px;
+    color: #888;
+    border-bottom: 1px solid #222;
+  }
+  #stats span { color: #e0e0e0; margin-right: 24px; }
+  .chart { width: 100%; }
+  .section-title {
+    padding: 16px 24px 4px;
+    font-size: 13px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-top: 1px solid #222;
+  }
+  .chart-row {
+    display: flex;
+    width: 100%;
+  }
+  .chart-row > div { flex: 1; }
+  #table-container {
+    padding: 16px 24px;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { position: sticky; top: 0; background: #16213e; text-align: left; padding: 8px; cursor: pointer; }
+  th:hover { color: #4fc3f7; }
+  td { padding: 6px 8px; border-bottom: 1px solid #222; }
+  tr:hover td { background: #16213e; }
+  .exit-ok { color: #22c55e; }
+  .exit-fail { color: #ef4444; }
+  .wrapper-tag { color: #666; font-style: italic; }
+  #processSummary {
+    padding: 8px 24px;
+    font-size: 12px;
+    color: #888;
+    border-bottom: 1px solid #222;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .proc-badge {
+    background: #16213e;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 2px 8px;
+    white-space: nowrap;
+  }
+  .proc-badge .count { color: #4fc3f7; }
+  .proc-badge .dur { color: #666; margin-left: 4px; }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <div>
+    <label>Load JSONL file:</label><br>
+    <input type="file" id="fileInput" accept=".jsonl,.json,.txt">
+  </div>
+  <div>
+    <label><input type="checkbox" id="hideWrappers" checked> Hide shell wrappers</label>
+  </div>
+  <div>
+    <label>Min duration (ms):</label>
+    <input type="number" id="minDuration" value="10" min="0" step="1" style="width:80px">
+  </div>
+  <div>
+    <label>Sort by:</label>
+    <select id="sortBy">
+      <option value="start">Start time</option>
+      <option value="duration">Duration (longest first)</option>
+      <option value="name">Name</option>
+    </select>
+  </div>
+  <div>
+    <label>Gantt max rows:</label>
+    <input type="number" id="ganttMax" value="100" min="10" step="10" style="width:80px">
+  </div>
+</div>
+
+<div id="stats"></div>
+<div id="processSummary"></div>
+
+<!-- System metrics charts -->
+<div class="section-title">System Metrics</div>
+<div class="chart-row">
+  <div id="cpuChart" class="chart"></div>
+  <div id="memChart" class="chart"></div>
+</div>
+<div class="chart-row">
+  <div id="diskChart" class="chart"></div>
+  <div id="netChart" class="chart"></div>
+</div>
+
+<!-- Process charts -->
+<div class="section-title">Process Trace</div>
+<div id="gantt" class="chart"></div>
+<div id="scatter" class="chart"></div>
+<div id="table-container">
+  <table id="processTable">
+    <thead>
+      <tr>
+        <th data-col="display_name">Name</th>
+        <th data-col="pid">PID</th>
+        <th data-col="ppid">PPID</th>
+        <th data-col="duration_ms">Duration (ms)</th>
+        <th data-col="exit_code">Exit</th>
+        <th data-col="filename">Filename</th>
+        <th data-col="args">Args</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+// Safe min/max for large arrays (Math.min(...arr) blows the stack at ~65k)
+function arrayMin(arr, fn) {
+  let min = Infinity;
+  for (const item of arr) { const v = fn(item); if (v < min) min = v; }
+  return min;
+}
+function arrayMax(arr, fn) {
+  let max = -Infinity;
+  for (const item of arr) { const v = fn(item); if (v > max) max = v; }
+  return max;
+}
+
+// Format seconds as human-readable relative time
+function fmtTime(sec) {
+  if (sec < 60) return sec.toFixed(0) + 's';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return m + 'm' + (s ? s + 's' : '');
+}
+
+// Format milliseconds for x-axis labels
+function fmtMs(ms) {
+  if (ms < 1000) return ms.toFixed(0) + 'ms';
+  const sec = ms / 1000;
+  if (sec < 60) return sec.toFixed(1) + 's';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return m + 'm' + (s ? s + 's' : '');
+}
+
+// ── State ───────────────────────────────────────────────────────────────────
+
+let allProcesses = [];   // paired exec+exit records
+let allMetrics = [];     // system metrics records
+let ganttChart = null;
+let scatterChart = null;
+let cpuChart = null;
+let memChart = null;
+let diskChart = null;
+let netChart = null;
+
+// ── File Loading ────────────────────────────────────────────────────────────
+
+document.getElementById('fileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const lines = ev.target.result.trim().split('\n');
+    const events = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    processEvents(events);
+  };
+  reader.readAsText(file);
+});
+
+// ── Controls ────────────────────────────────────────────────────────────────
+
+document.getElementById('hideWrappers').addEventListener('change', render);
+document.getElementById('minDuration').addEventListener('input', render);
+document.getElementById('sortBy').addEventListener('change', render);
+document.getElementById('ganttMax').addEventListener('input', render);
+
+// ── Event Processing ────────────────────────────────────────────────────────
+
+function processEvents(events) {
+  // Separate metrics from process events
+  const metricsEvents = [];
+  const processEvts = [];
+  for (const e of events) {
+    if (e.event_type === 'metrics') metricsEvents.push(e);
+    else processEvts.push(e);
+  }
+
+  // Compute firstTime separately per event type — metrics use CLOCK_BOOTTIME
+  // (same as eBPF) in new builds, but old JSONL files may use Unix epoch.
+  // Separate baselines prevent mixing clock domains.
+  let metricsT0 = Infinity;
+  for (const e of metricsEvents) { if (e.time_ns < metricsT0) metricsT0 = e.time_ns; }
+  if (!isFinite(metricsT0)) metricsT0 = 0;
+
+  let processT0 = Infinity;
+  for (const e of processEvts) { if (e.time_ns < processT0) processT0 = e.time_ns; }
+  if (!isFinite(processT0)) processT0 = 0;
+
+  // Process metrics — relative time from first metric
+  allMetrics = metricsEvents.map(m => ({
+    time_s: (m.time_ns - metricsT0) / 1e9,
+    cpu_user: m.cpu.user_pct,
+    cpu_system: m.cpu.system_pct,
+    cpu_total: m.cpu.total_pct,
+    mem_total: m.memory.total_mb,
+    mem_available: m.memory.available_mb,
+    mem_active: m.memory.active_mb,
+    mem_used: m.memory.total_mb - m.memory.available_mb,
+    disk_read: m.disk.read_mbps,
+    disk_write: m.disk.write_mbps,
+    net_rx: m.network.rx_mbps,
+    net_tx: m.network.tx_mbps,
+  }));
+
+  // Pair exec/exit events by PID
+  const execMap = new Map();
+  const processes = [];
+
+  for (const e of processEvts) {
+    if (e.event_type === 'exec') {
+      execMap.set(e.pid, e);
+    } else if (e.event_type === 'exit') {
+      const exec = execMap.get(e.pid);
+      if (exec) {
+        processes.push({
+          pid: e.pid,
+          ppid: exec.ppid,
+          display_name: exec.display_name || exec.name,
+          name: exec.name,
+          filename: exec.filename || '',
+          args: exec.args || [],
+          wrapper: exec.wrapper || false,
+          exit_code: e.exit_code,
+          start_ns: exec.time_ns,
+          end_ns: e.time_ns,
+          duration_ns: e.duration_ns || (e.time_ns - exec.time_ns),
+          start_ms: (exec.time_ns - processT0) / 1e6,
+          end_ms: (e.time_ns - processT0) / 1e6,
+          duration_ms: (e.duration_ns || (e.time_ns - exec.time_ns)) / 1e6,
+        });
+        execMap.delete(e.pid);
+      }
+    }
+  }
+
+  // Include exec events with no matching exit
+  for (const [pid, exec] of execMap) {
+    processes.push({
+      pid: pid,
+      ppid: exec.ppid,
+      display_name: exec.display_name || exec.name,
+      name: exec.name,
+      filename: exec.filename || '',
+      args: exec.args || [],
+      wrapper: exec.wrapper || false,
+      exit_code: null,
+      start_ns: exec.time_ns,
+      end_ns: null,
+      duration_ns: 0,
+      start_ms: (exec.time_ns - processT0) / 1e6,
+      end_ms: null,
+      duration_ms: 0,
+    });
+  }
+
+  allProcesses = processes;
+  render();
+}
+
+// ── Filtering & Sorting ─────────────────────────────────────────────────────
+
+function getFiltered() {
+  const hideWrappers = document.getElementById('hideWrappers').checked;
+  const minDuration = parseFloat(document.getElementById('minDuration').value) || 0;
+  const sortBy = document.getElementById('sortBy').value;
+
+  let filtered = allProcesses.filter(p => {
+    if (hideWrappers && p.wrapper) return false;
+    if (p.duration_ms < minDuration) return false;
+    return true;
+  });
+
+  if (sortBy === 'start') filtered.sort((a, b) => a.start_ms - b.start_ms);
+  else if (sortBy === 'duration') filtered.sort((a, b) => b.duration_ms - a.duration_ms);
+  else if (sortBy === 'name') filtered.sort((a, b) => a.display_name.localeCompare(b.display_name));
+
+  return filtered;
+}
+
+// ── Render All ──────────────────────────────────────────────────────────────
+
+function render() {
+  const filtered = getFiltered();
+  renderStats(filtered);
+  renderProcessSummary(filtered);
+  renderMetricsCharts();
+  renderGantt(filtered);
+  renderScatter(filtered);
+  renderTable(filtered);
+}
+
+// ── Stats Bar ───────────────────────────────────────────────────────────────
+
+function renderStats(processes) {
+  if (!processes.length && !allMetrics.length) {
+    document.getElementById('stats').innerHTML = 'No data loaded.';
+    return;
+  }
+  const total = allProcesses.length;
+  const shown = processes.length;
+  const parts = [`<span>Processes: ${shown}/${total}</span>`];
+
+  if (processes.length) {
+    const maxEnd = arrayMax(processes, p => p.end_ms || p.start_ms);
+    const minStart = arrayMin(processes, p => p.start_ms);
+    const totalDuration = maxEnd - minStart;
+    const failed = processes.filter(p => p.exit_code !== null && p.exit_code !== 0).length;
+    const longest = processes.reduce((a, b) => a.duration_ms > b.duration_ms ? a : b);
+    parts.push(`<span>Duration: ${(totalDuration / 1000).toFixed(2)}s</span>`);
+    parts.push(`<span>Failed: ${failed}</span>`);
+    parts.push(`<span>Longest: ${longest.display_name} (${longest.duration_ms.toFixed(1)}ms)</span>`);
+  }
+
+  if (allMetrics.length) {
+    parts.push(`<span>Metric samples: ${allMetrics.length}</span>`);
+  }
+
+  document.getElementById('stats').innerHTML = parts.join('');
+}
+
+// ── Process Summary (group by name) ─────────────────────────────────────────
+
+function renderProcessSummary(processes) {
+  const el = document.getElementById('processSummary');
+  if (!processes.length) { el.innerHTML = ''; return; }
+
+  // Group by display_name
+  const groups = new Map();
+  for (const p of processes) {
+    const g = groups.get(p.display_name);
+    if (g) {
+      g.count++;
+      g.totalMs += p.duration_ms;
+    } else {
+      groups.set(p.display_name, { count: 1, totalMs: p.duration_ms });
+    }
+  }
+
+  // Sort by total duration descending, take top 20
+  const sorted = [...groups.entries()]
+    .sort((a, b) => b[1].totalMs - a[1].totalMs)
+    .slice(0, 20);
+
+  el.innerHTML = sorted.map(([name, g]) => {
+    const avg = g.totalMs / g.count;
+    return `<span class="proc-badge">${name} <span class="count">x${g.count}</span><span class="dur">${fmtMs(g.totalMs)}</span></span>`;
+  }).join('');
+}
+
+// ── System Metrics Charts ───────────────────────────────────────────────────
+
+function renderMetricsCharts() {
+  if (!allMetrics.length) {
+    document.querySelectorAll('.chart-row').forEach(el => el.style.display = 'none');
+    return;
+  }
+  document.querySelectorAll('.chart-row').forEach(el => el.style.display = 'flex');
+
+  const times = allMetrics.map(m => fmtTime(m.time_s));
+
+  renderCpuChart(times);
+  renderMemChart(times);
+  renderDiskChart(times);
+  renderNetChart(times);
+}
+
+function renderCpuChart(times) {
+  const el = document.getElementById('cpuChart');
+  el.style.height = '250px';
+  if (!cpuChart) {
+    cpuChart = echarts.init(el, 'dark');
+    window.addEventListener('resize', () => cpuChart.resize());
+  }
+
+  cpuChart.setOption({
+    title: { text: 'CPU Usage (%)', left: 24, textStyle: { fontSize: 13 } },
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['User', 'System'], right: 24, textStyle: { fontSize: 11 } },
+    grid: { left: 60, right: 24, top: 50, bottom: 30 },
+    xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
+    series: [
+      {
+        name: 'User',
+        type: 'line',
+        stack: 'cpu',
+        areaStyle: { opacity: 0.4 },
+        data: allMetrics.map(m => +m.cpu_user.toFixed(1)),
+        lineStyle: { width: 1 },
+        symbol: 'circle',
+        symbolSize: 4,
+        itemStyle: { color: '#4fc3f7' },
+      },
+      {
+        name: 'System',
+        type: 'line',
+        stack: 'cpu',
+        areaStyle: { opacity: 0.4 },
+        data: allMetrics.map(m => +m.cpu_system.toFixed(1)),
+        lineStyle: { width: 1 },
+        symbol: 'circle',
+        symbolSize: 4,
+        itemStyle: { color: '#ff7043' },
+      },
+    ],
+  }, true);
+}
+
+function renderMemChart(times) {
+  const el = document.getElementById('memChart');
+  el.style.height = '250px';
+  if (!memChart) {
+    memChart = echarts.init(el, 'dark');
+    window.addEventListener('resize', () => memChart.resize());
+  }
+
+  memChart.setOption({
+    title: { text: 'Memory (MB)', left: 24, textStyle: { fontSize: 13 } },
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['Used', 'Available'], right: 24, textStyle: { fontSize: 11 } },
+    grid: { left: 60, right: 24, top: 50, bottom: 30 },
+    xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
+    yAxis: {
+      type: 'value',
+      max: allMetrics.length ? Math.ceil(allMetrics[0].mem_total) : undefined,
+      axisLabel: { formatter: v => (v / 1024).toFixed(1) + 'G' },
+    },
+    series: [
+      {
+        name: 'Used',
+        type: 'line',
+        stack: 'mem',
+        areaStyle: { opacity: 0.4 },
+        data: allMetrics.map(m => +m.mem_used.toFixed(0)),
+        lineStyle: { width: 1 },
+        symbol: 'circle',
+        symbolSize: 4,
+        itemStyle: { color: '#ab47bc' },
+      },
+      {
+        name: 'Available',
+        type: 'line',
+        stack: 'mem',
+        areaStyle: { opacity: 0.2 },
+        data: allMetrics.map(m => +m.mem_available.toFixed(0)),
+        lineStyle: { width: 1 },
+        symbol: 'circle',
+        symbolSize: 4,
+        itemStyle: { color: '#66bb6a' },
+      },
+    ],
+  }, true);
+}
+
+function renderDiskChart(times) {
+  const el = document.getElementById('diskChart');
+  el.style.height = '250px';
+  if (!diskChart) {
+    diskChart = echarts.init(el, 'dark');
+    window.addEventListener('resize', () => diskChart.resize());
+  }
+
+  diskChart.setOption({
+    title: { text: 'Disk I/O (MB/s)', left: 24, textStyle: { fontSize: 13 } },
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['Read', 'Write'], right: 24, textStyle: { fontSize: 11 } },
+    grid: { left: 60, right: 24, top: 50, bottom: 30 },
+    xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'value', axisLabel: { formatter: '{value}' } },
+    series: [
+      {
+        name: 'Read',
+        type: 'bar',
+        data: allMetrics.map(m => +m.disk_read.toFixed(2)),
+        itemStyle: { color: '#4fc3f7' },
+      },
+      {
+        name: 'Write',
+        type: 'bar',
+        data: allMetrics.map(m => +m.disk_write.toFixed(2)),
+        itemStyle: { color: '#ff7043' },
+      },
+    ],
+  }, true);
+}
+
+function renderNetChart(times) {
+  const el = document.getElementById('netChart');
+  el.style.height = '250px';
+  if (!netChart) {
+    netChart = echarts.init(el, 'dark');
+    window.addEventListener('resize', () => netChart.resize());
+  }
+
+  netChart.setOption({
+    title: { text: 'Network I/O (MB/s)', left: 24, textStyle: { fontSize: 13 } },
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['RX', 'TX'], right: 24, textStyle: { fontSize: 11 } },
+    grid: { left: 60, right: 24, top: 50, bottom: 30 },
+    xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'value', axisLabel: { formatter: '{value}' } },
+    series: [
+      {
+        name: 'RX',
+        type: 'line',
+        areaStyle: { opacity: 0.3 },
+        data: allMetrics.map(m => +m.net_rx.toFixed(4)),
+        lineStyle: { width: 1 },
+        symbol: 'circle',
+        symbolSize: 4,
+        itemStyle: { color: '#26a69a' },
+      },
+      {
+        name: 'TX',
+        type: 'line',
+        areaStyle: { opacity: 0.3 },
+        data: allMetrics.map(m => +m.net_tx.toFixed(4)),
+        lineStyle: { width: 1 },
+        symbol: 'circle',
+        symbolSize: 4,
+        itemStyle: { color: '#ffa726' },
+      },
+    ],
+  }, true);
+}
+
+// ── Gantt Chart ─────────────────────────────────────────────────────────────
+
+function renderGantt(processes) {
+  const container = document.getElementById('gantt');
+
+  if (!processes.length) {
+    container.style.height = '0px';
+    return;
+  }
+
+  // Cap to top N processes (sorted by current sort order — the slice
+  // takes the first N which are already sorted by getFiltered)
+  const maxRows = parseInt(document.getElementById('ganttMax').value) || 100;
+  const ganttData = processes.slice(0, maxRows);
+
+  const height = Math.max(400, ganttData.length * 24 + 100);
+  container.style.height = height + 'px';
+
+  if (!ganttChart) {
+    ganttChart = echarts.init(container, 'dark');
+    window.addEventListener('resize', () => ganttChart.resize());
+  } else {
+    ganttChart.resize();
+  }
+
+  const categories = ganttData.map((p) => `${p.display_name} (${p.pid})`);
+
+  const barData = ganttData.map((p, i) => ({
+    name: p.display_name,
+    value: [i, p.start_ms, p.end_ms || p.start_ms + 1, p.duration_ms],
+    itemStyle: {
+      color: p.exit_code === null ? '#666'
+           : p.exit_code === 0 ? '#22c55e'
+           : '#ef4444',
+    },
+    process: p,
+  }));
+
+  ganttChart.setOption({
+    title: {
+      text: `Process Gantt Chart (${ganttData.length}${ganttData.length < processes.length ? '/' + processes.length : ''})`,
+      left: 24,
+      textStyle: { fontSize: 14 },
+    },
+    tooltip: {
+      formatter: (params) => {
+        const p = params.data.process;
+        return `<b>${p.display_name}</b> (PID ${p.pid})<br>` +
+          `Duration: ${p.duration_ms.toFixed(2)}ms<br>` +
+          `Exit: ${p.exit_code ?? 'running'}<br>` +
+          `File: ${p.filename}<br>` +
+          (p.args.length ? `Args: ${p.args.join(' ')}<br>` : '');
+      }
+    },
+    grid: { left: 200, right: 40, top: 50, bottom: 40 },
+    xAxis: {
+      type: 'value',
+      name: 'Time',
+      nameLocation: 'middle',
+      nameGap: 25,
+      axisLabel: { formatter: v => fmtMs(v) },
+    },
+    yAxis: {
+      type: 'category',
+      data: categories,
+      inverse: true,
+      axisLabel: { fontSize: 11, width: 180, overflow: 'truncate' },
+    },
+    dataZoom: [
+      { type: 'inside', xAxisIndex: 0 },
+      { type: 'slider', xAxisIndex: 0, bottom: 10, height: 20 },
+    ],
+    series: [{
+      type: 'custom',
+      renderItem: (params, api) => {
+        const catIdx = api.value(0);
+        const startCoord = api.coord([api.value(1), catIdx]);
+        const endCoord = api.coord([api.value(2), catIdx]);
+        const barHeight = api.size([0, 1])[1] * 0.6;
+        const width = Math.max(endCoord[0] - startCoord[0], 2);
+        return {
+          type: 'rect',
+          shape: {
+            x: startCoord[0],
+            y: startCoord[1] - barHeight / 2,
+            width: width,
+            height: barHeight,
+          },
+          style: api.style(),
+        };
+      },
+      encode: { x: [1, 2], y: 0 },
+      data: barData,
+    }],
+  }, true);
+}
+
+// ── Scatter Plot ────────────────────────────────────────────────────────────
+
+function renderScatter(processes) {
+  const container = document.getElementById('scatter');
+
+  if (!processes.length) {
+    container.style.height = '0px';
+    return;
+  }
+
+  container.style.height = '350px';
+
+  if (!scatterChart) {
+    scatterChart = echarts.init(container, 'dark');
+    window.addEventListener('resize', () => scatterChart.resize());
+  }
+
+  const childCount = new Map();
+  for (const p of allProcesses) {
+    childCount.set(p.ppid, (childCount.get(p.ppid) || 0) + 1);
+  }
+
+  const data = processes.filter(p => p.duration_ms > 0).map(p => ({
+    value: [
+      p.start_ms,
+      p.duration_ms,
+      childCount.get(p.pid) || 0,
+    ],
+    itemStyle: {
+      color: p.exit_code === 0 ? '#22c55e' : p.exit_code === null ? '#666' : '#ef4444',
+    },
+    process: p,
+  }));
+
+  scatterChart.setOption({
+    title: { text: 'Process Duration Scatter', left: 24, textStyle: { fontSize: 14 } },
+    tooltip: {
+      formatter: (params) => {
+        const p = params.data.process;
+        return `<b>${p.display_name}</b> (PID ${p.pid})<br>` +
+          `Start: ${fmtMs(p.start_ms)}<br>` +
+          `Duration: ${p.duration_ms.toFixed(2)}ms<br>` +
+          `Children: ${params.data.value[2]}<br>` +
+          `Exit: ${p.exit_code ?? 'running'}`;
+      }
+    },
+    grid: { left: 80, right: 40, top: 50, bottom: 50 },
+    xAxis: {
+      type: 'value',
+      name: 'Start time',
+      nameLocation: 'middle',
+      nameGap: 30,
+      axisLabel: { formatter: v => fmtMs(v) },
+    },
+    yAxis: {
+      type: 'log',
+      name: 'Duration (ms)',
+      min: 0.01,
+    },
+    dataZoom: [
+      { type: 'inside' },
+    ],
+    series: [{
+      type: 'scatter',
+      data: data,
+      symbolSize: (val) => Math.max(6, Math.min(30, 6 + val[2] * 3)),
+    }],
+  }, true);
+}
+
+// ── Process Table ───────────────────────────────────────────────────────────
+
+function renderTable(processes) {
+  // Cap table to 500 rows for DOM performance
+  const capped = processes.slice(0, 500);
+  const tbody = document.querySelector('#processTable tbody');
+  tbody.innerHTML = capped.map(p => {
+    const exitClass = p.exit_code === null ? '' : p.exit_code === 0 ? 'exit-ok' : 'exit-fail';
+    const wrapperClass = p.wrapper ? 'wrapper-tag' : '';
+    return `<tr class="${wrapperClass}">
+      <td>${p.display_name}</td>
+      <td>${p.pid}</td>
+      <td>${p.ppid}</td>
+      <td>${p.duration_ms.toFixed(2)}</td>
+      <td class="${exitClass}">${p.exit_code ?? '-'}</td>
+      <td>${p.filename}</td>
+      <td>${p.args.slice(1).join(' ')}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Auto-load default file ──────────────────────────────────────────────────
+
+fetch('profiler-events.jsonl')
+  .then(r => r.text())
+  .then(text => {
+    const lines = text.trim().split('\n');
+    const events = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    if (events.length) processEvents(events);
+  })
+  .catch(() => {}); // silently fall back to manual file input
+
+// ── Table Sorting ───────────────────────────────────────────────────────────
+
+document.querySelectorAll('#processTable th').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    allProcesses.sort((a, b) => {
+      const va = a[col] ?? '';
+      const vb = b[col] ?? '';
+      if (typeof va === 'number') return vb - va;
+      return String(va).localeCompare(String(vb));
+    });
+    render();
+  });
+});
+</script>
+</body>
+</html>

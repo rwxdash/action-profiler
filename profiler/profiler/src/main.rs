@@ -1,4 +1,5 @@
 mod event;
+mod metrics;
 mod utils;
 
 use std::{
@@ -6,6 +7,7 @@ use std::{
     fs::File,
     io::{BufWriter, Write, stdout},
     path::PathBuf,
+    time::Duration,
 };
 
 use aya::{
@@ -14,7 +16,7 @@ use aya::{
 };
 use clap::Parser;
 use profiler_common::ProcessEvent;
-use tokio::{io::unix::AsyncFd, signal};
+use tokio::{io::unix::AsyncFd, signal, time};
 use tracing::{debug, info, warn};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -41,6 +43,10 @@ struct Args {
     /// Disable the default ignore list (awk, cat, grep, ls, etc.)
     #[arg(long)]
     no_default_ignore: bool,
+
+    /// System metrics collection interval in seconds (0 to disable)
+    #[arg(long, default_value = "5")]
+    metric_frequency: u64,
 }
 
 #[tokio::main]
@@ -164,6 +170,24 @@ async fn main() -> anyhow::Result<()> {
         None => BufWriter::new(Box::new(stdout().lock())),
     };
 
+    // Set up system metrics polling
+    let mut metrics_state = metrics::MetricsState::default();
+    let metrics_enabled = args.metric_frequency > 0;
+    let mut metrics_interval = time::interval(Duration::from_secs(if metrics_enabled {
+        args.metric_frequency
+    } else {
+        3600
+    }));
+
+    metrics_interval.tick().await;
+    if metrics_enabled {
+        let _ = metrics::collect(&mut metrics_state, 0);
+        info!(
+            "System metrics enabled (every {}s). Use --metric-frequency 0 to disable.",
+            args.metric_frequency
+        );
+    }
+
     info!("Profiler running. Press Ctrl-C to stop.");
 
     loop {
@@ -182,6 +206,17 @@ async fn main() -> anyhow::Result<()> {
                 }
                 let _ = writer.flush();
                 guard.clear_ready();
+            }
+            _ = metrics_interval.tick(), if metrics_enabled => {
+                // Use CLOCK_BOOTTIME to match eBPF's bpf_ktime_get_boot_ns()
+                let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+                unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &mut ts) };
+                let now = ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64;
+                let record = metrics::collect(&mut metrics_state, now);
+                if let Ok(json) = serde_json::to_string(&record) {
+                    let _ = writeln!(writer, "{json}");
+                    let _ = writer.flush();
+                }
             }
             _ = signal::ctrl_c() => {
                 match &args.output {
