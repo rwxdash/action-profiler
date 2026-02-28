@@ -1,0 +1,1790 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Action Profiler</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a2e;
+            color: #e0e0e0;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        #app-container {
+            max-width: 1440px;
+            margin: 0 auto;
+            background: #1a1a2e;
+            min-height: 100vh;
+            border-left: 1px solid #222;
+            border-right: 1px solid #222;
+        }
+
+        /* ── Header ─────────────────────────────────────────── */
+
+        #app-header {
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #333;
+        }
+
+        #app-header .logo {
+            font-size: 15px;
+            font-weight: bold;
+            color: #4fc3f7;
+            letter-spacing: 1px;
+        }
+
+        #app-header input[type="file"] {
+            font-size: 13px;
+        }
+
+        /* ── Summary Bar ────────────────────────────────────── */
+
+        #summary-bar {
+            display: none;
+            padding: 16px 24px;
+            gap: 16px;
+            border-bottom: 1px solid #333;
+        }
+
+        .summary-card {
+            background: #16213e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 12px 20px;
+            min-width: 180px;
+        }
+
+        .summary-card .card-label {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+
+        .summary-card .card-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #e0e0e0;
+        }
+
+        .summary-card .card-detail {
+            font-size: 11px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        .summary-card.anomaly .card-value {
+            color: #ef4444;
+        }
+
+        /* ── Tabs ───────────────────────────────────────────── */
+
+        #tabs {
+            display: none;
+            padding: 0 24px;
+            border-bottom: 1px solid #333;
+            gap: 0;
+        }
+
+        #tabs button {
+            background: none;
+            border: none;
+            color: #888;
+            font-family: inherit;
+            font-size: 13px;
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: color 0.15s, border-color 0.15s;
+        }
+
+        #tabs button:hover {
+            color: #e0e0e0;
+        }
+
+        #tabs button.active {
+            color: #4fc3f7;
+            border-bottom-color: #4fc3f7;
+        }
+
+        /* ── Filter Bar ─────────────────────────────────────── */
+
+        #filter-bar {
+            display: none;
+            padding: 10px 24px;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+            border-bottom: 1px solid #222;
+        }
+
+        #filter-bar label {
+            font-size: 13px;
+            color: #aaa;
+        }
+
+        #filter-bar input[type="checkbox"] {
+            margin-right: 4px;
+        }
+
+        #filter-bar select,
+        #filter-bar input[type="number"],
+        #filter-bar input[type="text"] {
+            background: #16213e;
+            color: #e0e0e0;
+            border: 1px solid #444;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+
+        #filter-bar input[type="text"] {
+            width: 200px;
+        }
+
+        /* ── Tab Sections ───────────────────────────────────── */
+
+        .tab-section {
+            display: none;
+        }
+
+        .tab-section.visible {
+            display: block;
+        }
+
+        /* ── Charts ─────────────────────────────────────────── */
+
+        .chart {
+            width: 100%;
+        }
+
+        #gantt-wrapper {
+            max-height: 600px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            border: 1px solid #222;
+            border-radius: 8px;
+        }
+
+        .section-title {
+            padding: 16px 24px 4px;
+            font-size: 13px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-top: 1px solid #222;
+        }
+
+        .chart-row {
+            display: flex;
+            width: 100%;
+        }
+
+        .chart-row>div {
+            flex: 1;
+        }
+
+        /* ── Inspector Panel ────────────────────────────────── */
+
+        #inspector {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 1440px;
+            max-height: 240px;
+            overflow-y: auto;
+            background: #f0f2f5;
+            border-top: 3px solid #1a73e8;
+            box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15), 0 -1px 6px rgba(0, 0, 0, 0.1);
+            padding: 16px 24px;
+            z-index: 100;
+            border-radius: 12px 12px 0 0;
+        }
+
+        #inspector .inspector-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+
+        #inspector .inspector-title {
+            font-size: 15px;
+            font-weight: bold;
+            color: #1a1a2e;
+        }
+
+        #inspector .inspector-exit {
+            font-size: 13px;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        #inspector .inspector-exit.ok {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        #inspector .inspector-exit.fail {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        #inspector .inspector-exit.running {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        #inspector .inspector-cmd {
+            font-size: 12px;
+            color: #555;
+            margin-bottom: 8px;
+            word-break: break-all;
+        }
+
+        #inspector .inspector-close {
+            background: none;
+            border: 1px solid #ccc;
+            color: #555;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            float: right;
+        }
+
+        #inspector .inspector-close:hover {
+            color: #1a1a2e;
+            border-color: #888;
+            background: #e2e5ea;
+        }
+
+        .ebpf-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 10px;
+        }
+
+        .ebpf-stat {
+            background: #e2e5ea;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            padding: 10px 14px;
+        }
+
+        .ebpf-stat .stat-label {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .ebpf-stat .stat-value {
+            font-size: 16px;
+            font-weight: bold;
+            color: #1a1a2e;
+            margin: 2px 0;
+        }
+
+        .ebpf-stat .stat-detail {
+            font-size: 11px;
+            color: #777;
+        }
+
+        /* ── Process Table ──────────────────────────────────── */
+
+        #table-container {
+            padding: 16px 24px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            background: #16213e;
+            text-align: left;
+            padding: 8px;
+            cursor: pointer;
+        }
+
+        th:hover {
+            color: #4fc3f7;
+        }
+
+        td {
+            padding: 6px 8px;
+            border-bottom: 1px solid #222;
+        }
+
+        tr:hover td {
+            background: #16213e;
+        }
+
+        .exit-ok {
+            color: #22c55e;
+        }
+
+        .exit-fail {
+            color: #ef4444;
+        }
+
+        .wrapper-tag {
+            color: #666;
+            font-style: italic;
+        }
+
+        /* ── OOM Alerts ─────────────────────────────────────── */
+
+        #oomAlerts {
+            padding: 0 24px;
+            border-bottom: 1px solid #222;
+        }
+
+        .oom-alert {
+            background: #3b1111;
+            border: 1px solid #ef4444;
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin: 12px 0;
+            font-size: 13px;
+        }
+
+        .oom-alert .oom-title {
+            color: #ef4444;
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 6px;
+        }
+
+        .oom-alert .oom-detail {
+            color: #ccc;
+        }
+
+        .oom-alert .oom-mem {
+            color: #ff7043;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="app-container">
+        <!-- Header -->
+        <div id="app-header">
+            <div>
+                <label style="font-size:13px;color:#aaa">Load JSONL file:
+                    <input type="file" id="fileInput" accept=".jsonl,.json,.txt"></label>
+            </div>
+            <div class="logo">ACTION PROFILER</div>
+        </div>
+
+        <!-- Summary Bar -->
+        <div id="summary-bar">
+            <div class="summary-card" id="card-time">
+                <div class="card-label">Total Time</div>
+                <div class="card-value" id="card-time-val">-</div>
+                <div class="card-detail" id="card-time-detail"></div>
+            </div>
+            <div class="summary-card" id="card-bottleneck">
+                <div class="card-label">Longest Task</div>
+                <div class="card-value" id="card-bottleneck-val">-</div>
+                <div class="card-detail" id="card-bottleneck-detail"></div>
+            </div>
+            <div class="summary-card anomaly" id="card-anomalies" style="cursor:pointer" onclick="toggleOomAlerts()">
+                <div class="card-label">Anomalies <span id="oom-toggle-hint"
+                        style="font-size:10px;color:#666;display:none">(click to expand)</span></div>
+                <div class="card-value" id="card-anomalies-val">-</div>
+                <div class="card-detail" id="card-anomalies-detail"></div>
+            </div>
+        </div>
+
+        <!-- OOM Alerts (collapsible, under anomalies card) -->
+        <div id="oomAlerts" style="display:none"></div>
+
+        <!-- Tab Navigation -->
+        <nav id="tabs">
+            <button class="active" data-tab="all">All</button>
+            <button data-tab="health">System Health</button>
+            <button data-tab="ebpf">eBPF Metrics</button>
+            <button data-tab="tree">Processes</button>
+        </nav>
+
+        <!-- Filter Bar -->
+        <div id="filter-bar">
+            <div>
+                <label><input type="checkbox" id="hideWrappers" checked> Hide wrappers</label>
+            </div>
+            <div>
+                <label>Min duration (ms):
+                    <input type="number" id="minDuration" value="100" min="0" step="1" style="width:80px"></label>
+            </div>
+            <div>
+                <label>Sort by:
+                    <select id="sortBy">
+                        <option value="start">Start time</option>
+                        <option value="duration">Duration (longest first)</option>
+                        <option value="name">Name</option>
+                    </select></label>
+            </div>
+            <div>
+                <label>Search:
+                    <input type="text" id="searchInput" placeholder="Filter processes..."></label>
+            </div>
+        </div>
+
+        <!-- ── Tab: System Health ───────────────────────────────── -->
+        <section class="tab-section" data-tab="health">
+            <div class="section-title" id="metricsSection">System Metrics</div>
+            <div class="chart-row" id="metricsRow1">
+                <div id="cpuChart" class="chart"></div>
+                <div id="memChart" class="chart"></div>
+            </div>
+            <div class="chart-row" id="metricsRow2">
+                <div id="diskChart" class="chart"></div>
+                <div id="netChart" class="chart"></div>
+            </div>
+        </section>
+
+        <!-- ── Tab: eBPF Metrics ────────────────────────────────── -->
+        <section class="tab-section" data-tab="ebpf">
+            <div class="section-title" id="ebpfSection" style="display:none">eBPF Insights</div>
+            <div class="chart-row" id="ebpfChartRow" style="display:none">
+                <div id="blockIoChart" class="chart"></div>
+                <div id="schedChart" class="chart"></div>
+            </div>
+
+            <div class="section-title" id="summarySection" style="display:none">eBPF Summaries (Aggregated)</div>
+            <div class="chart-row" id="summaryChartRow" style="display:none">
+                <div id="blockIoSummaryChart" class="chart"></div>
+                <div id="schedSummaryChart" class="chart"></div>
+            </div>
+        </section>
+
+        <!-- ── Tab: Processes ─────────────────────────────────────── -->
+        <section class="tab-section" data-tab="tree">
+            <div class="section-title">Execution Tree</div>
+            <div id="gantt-truncated"
+                style="display:none;padding:8px 16px;background:#2a1a00;border:1px solid #663300;border-radius:6px;color:#ffa726;font-size:12px;margin:0 24px 8px">
+            </div>
+            <div id="gantt-wrapper">
+                <div id="gantt-chart" class="chart"></div>
+            </div>
+            <div id="gantt-zoom" class="chart"></div>
+            <div class="section-title">Process Duration Scatter</div>
+            <div id="scatter" class="chart"></div>
+            <div class="section-title">Process Table</div>
+            <div id="table-container">
+                <table id="processTable">
+                    <thead>
+                        <tr>
+                            <th data-col="display_name">Name</th>
+                            <th data-col="pid">PID</th>
+                            <th data-col="ppid">PPID</th>
+                            <th data-col="duration_ms">Duration (ms)</th>
+                            <th data-col="exit_code">Exit</th>
+                            <th data-col="filename">Filename</th>
+                            <th data-col="args">Args</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Bottom spacer -->
+        <div style="height:280px"></div>
+
+    </div><!-- end #app-container -->
+
+    <div id="inspector"></div>
+
+    <script type="module">
+        // ── WASM Initialization ─────────────────────────────────────────────────────
+
+        import init, { process_jsonl } from './pkg/profiler_viewer.js';
+        await init();
+
+        // ── Helpers ─────────────────────────────────────────────────────────────────
+
+        function arrayMin(arr, fn) {
+            let min = Infinity;
+            for (const item of arr) { const v = fn(item); if (v < min) min = v; }
+            return min;
+        }
+        function arrayMax(arr, fn) {
+            let max = -Infinity;
+            for (const item of arr) { const v = fn(item); if (v > max) max = v; }
+            return max;
+        }
+
+        function fmtTime(sec) {
+            if (sec < 60) return sec.toFixed(0) + 's';
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            return m + 'm' + (s ? s + 's' : '');
+        }
+
+        function fmtMs(ms) {
+            if (ms < 1000) return ms.toFixed(0) + 'ms';
+            const sec = ms / 1000;
+            if (sec < 60) return sec.toFixed(1) + 's';
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            return m + 'm' + (s ? s + 's' : '');
+        }
+
+        function fmtKB(kb) {
+            if (kb >= 1024 * 1024) return (kb / (1024 * 1024)).toFixed(1) + ' GB';
+            if (kb >= 1024) return (kb / 1024).toFixed(0) + ' MB';
+            return kb + ' KB';
+        }
+
+        // ── State ───────────────────────────────────────────────────────────────────
+
+        let allProcesses = [];
+        let allProcessTree = [];
+        let allAnomalies = {};
+        let allMetrics = [];
+        let allBlockIo = [];
+        let allSchedLatency = [];
+        let allBlockIoSummaries = [];
+        let allSchedSummaries = [];
+        let allOomKills = [];
+        let allStats = {};
+
+        let selectedPids = null; // Set<number> when a process is clicked, null = no selection
+
+        let scatterChart = null;
+        let cpuChart = null, memChart = null, diskChart = null, netChart = null;
+        let blockIoChart = null, schedChart = null;
+        let blockIoSummaryChart = null, schedSummaryChart = null;
+        let ganttChart = null, ganttZoomChart = null;
+        let expandedPids = new Set();
+        let ganttPage = 0;
+
+        // ── Tab Logic ───────────────────────────────────────────────────────────────
+
+        const tabButtons = document.querySelectorAll('#tabs button');
+        const tabSections = document.querySelectorAll('.tab-section');
+
+        function activateTab(tabName) {
+            tabButtons.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === tabName);
+            });
+            tabSections.forEach(sec => {
+                if (tabName === 'all') {
+                    sec.classList.add('visible');
+                } else {
+                    sec.classList.toggle('visible', sec.dataset.tab === tabName);
+                }
+            });
+            // Resize visible charts after tab switch
+            requestAnimationFrame(() => {
+                [scatterChart, cpuChart, memChart, diskChart, netChart,
+                    blockIoChart, schedChart, blockIoSummaryChart, schedSummaryChart, ganttChart, ganttZoomChart]
+                    .forEach(c => c && c.resize());
+            });
+        }
+
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                activateTab(btn.dataset.tab);
+                render();
+            });
+        });
+
+        // ── File Loading ────────────────────────────────────────────────────────────
+
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => loadJsonl(ev.target.result);
+            reader.readAsText(file);
+        });
+
+        // ── Controls ────────────────────────────────────────────────────────────────
+
+        document.getElementById('hideWrappers').addEventListener('change', render);
+        document.getElementById('minDuration').addEventListener('input', render);
+        document.getElementById('sortBy').addEventListener('change', render);
+        document.getElementById('searchInput').addEventListener('input', render);
+
+        // ── WASM-powered Event Processing ───────────────────────────────────────────
+
+        function loadJsonl(text) {
+            const result = JSON.parse(process_jsonl(text));
+
+            allStats = result.stats;
+            allProcessTree = result.process_tree || [];
+            allAnomalies = result.anomalies || {};
+
+            allProcesses = result.processes.map(p => ({
+                ...p,
+                exit_code: p.exit_code ?? null,
+                start_ms: p.start_s * 1000,
+                end_ms: p.end_s != null ? p.end_s * 1000 : null,
+            }));
+
+            allMetrics = result.metrics.map(m => ({
+                time_s: m.time_s,
+                time_ns: m.time_ns,
+                cpu_user: m.cpu.user_pct,
+                cpu_system: m.cpu.system_pct,
+                cpu_total: m.cpu.total_pct,
+                mem_total: m.memory.total_mb,
+                mem_available: m.memory.available_mb,
+                mem_active: m.memory.active_mb,
+                mem_used: m.memory.total_mb - m.memory.available_mb,
+                disk_read: m.disk.read_mbps,
+                disk_write: m.disk.write_mbps,
+                net_rx: m.network.rx_mbps,
+                net_tx: m.network.tx_mbps,
+            }));
+
+            allBlockIo = result.block_io.map(e => ({
+                ...e,
+                isRead: e.is_read,
+                isWrite: !e.is_read,
+            }));
+
+            allSchedLatency = result.sched_latency;
+            allBlockIoSummaries = result.block_io_summaries;
+            allSchedSummaries = result.sched_summaries;
+            allOomKills = result.oom_kills;
+
+            // Reset state
+            selectedPids = null;
+            expandedPids = new Set();
+
+            // Show UI elements
+            document.getElementById('summary-bar').style.display = 'flex';
+            document.getElementById('tabs').style.display = 'flex';
+            document.getElementById('filter-bar').style.display = 'flex';
+            document.getElementById('inspector').style.display = 'none';
+
+            // Activate "all" tab and render
+            activateTab('all');
+            render();
+        }
+
+        // ── Filtering & Sorting ─────────────────────────────────────────────────────
+
+        function getFiltered() {
+            const hideWrappers = document.getElementById('hideWrappers').checked;
+            const minDuration = parseFloat(document.getElementById('minDuration').value) || 0;
+            const sortBy = document.getElementById('sortBy').value;
+            const search = document.getElementById('searchInput').value.toLowerCase().trim();
+
+            let filtered = allProcesses.filter(p => {
+                if (hideWrappers && p.wrapper) return false;
+                if (p.duration_ms < minDuration) return false;
+                if (search && !p.display_name.toLowerCase().includes(search) &&
+                    !p.filename.toLowerCase().includes(search) &&
+                    !String(p.pid).includes(search)) return false;
+                return true;
+            });
+
+            if (sortBy === 'start') filtered.sort((a, b) => a.start_ms - b.start_ms);
+            else if (sortBy === 'duration') filtered.sort((a, b) => b.duration_ms - a.duration_ms);
+            else if (sortBy === 'name') filtered.sort((a, b) => a.display_name.localeCompare(b.display_name));
+
+            return filtered;
+        }
+
+        // ── Tree helpers ─────────────────────────────────────────────────────────────
+
+        function collectPids(node, set) {
+            set.add(node.pid);
+            if (node.children) {
+                for (const child of node.children) collectPids(child, set);
+            }
+        }
+
+        function clearSelection() {
+            selectedPids = null;
+            ganttPage = 0;
+            document.getElementById('inspector').style.display = 'none';
+            render();
+        }
+        window.clearSelection = clearSelection;
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && selectedPids) clearSelection();
+        });
+
+        window._ganttPageNav = (delta) => {
+            ganttPage += delta;
+            renderGantt();
+        };
+
+        // ── Render All ──────────────────────────────────────────────────────────────
+
+        function render() {
+            let filtered = getFiltered();
+            const scatterFiltered = selectedPids
+                ? filtered.filter(p => selectedPids.has(p.pid))
+                : filtered;
+
+            const steps = [
+                ['SummaryBar', () => renderSummaryBar()],
+                ['OomAlerts', () => renderOomAlerts()],
+                ['MetricsCharts', () => renderMetricsCharts()],
+                ['EbpfCharts', () => renderEbpfCharts()],
+                ['Gantt', () => renderGantt()],
+                ['Scatter', () => renderScatter(scatterFiltered)],
+                ['Table', () => renderTable(scatterFiltered)],
+            ];
+            for (const [name, fn] of steps) {
+                try { fn(); } catch (e) { console.error(`[render] ${name} failed:`, e); }
+            }
+        }
+
+        // ── Summary Bar ─────────────────────────────────────────────────────────────
+
+        function renderSummaryBar() {
+            // Total time
+            const dur = allStats.duration_s || 0;
+            document.getElementById('card-time-val').textContent = fmtTime(dur);
+            document.getElementById('card-time-detail').textContent =
+                `${allStats.process_count || 0} processes, ${allStats.total_events || 0} events`;
+
+            // Bottleneck — longest process
+            if (allProcesses.length) {
+                const longest = allProcesses.reduce((a, b) => a.duration_ms > b.duration_ms ? a : b);
+                document.getElementById('card-bottleneck-val').textContent =
+                    `${longest.display_name} (${fmtMs(longest.duration_ms)})`;
+                document.getElementById('card-bottleneck-detail').textContent =
+                    `PID ${longest.pid}`;
+            }
+
+            // Anomalies
+            const parts = [];
+            if (allAnomalies.oom_count > 0) parts.push(`${allAnomalies.oom_count} OOM Kill${allAnomalies.oom_count > 1 ? 's' : ''}`);
+            if (allAnomalies.high_sched_latency) parts.push(`High CPU Wait (${allAnomalies.max_sched_latency_ms.toFixed(0)}ms)`);
+            if (allAnomalies.failed_process_count > 0) parts.push(`${allAnomalies.failed_process_count} Failed`);
+
+            const anomCard = document.getElementById('card-anomalies');
+            const oomHint = document.getElementById('oom-toggle-hint');
+            if (parts.length) {
+                document.getElementById('card-anomalies-val').textContent = parts[0];
+                document.getElementById('card-anomalies-detail').textContent = parts.slice(1).join(', ');
+                anomCard.classList.add('anomaly');
+                oomHint.style.display = allOomKills.length ? 'inline' : 'none';
+            } else {
+                document.getElementById('card-anomalies-val').textContent = 'None';
+                document.getElementById('card-anomalies-val').style.color = '#22c55e';
+                document.getElementById('card-anomalies-detail').textContent = '';
+                anomCard.classList.remove('anomaly');
+                oomHint.style.display = 'none';
+            }
+        }
+
+        // ── OOM Kill Alerts (collapsible) ───────────────────────────────────────────
+
+        function toggleOomAlerts() {
+            const el = document.getElementById('oomAlerts');
+            if (!allOomKills.length) return;
+            el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }
+        window.toggleOomAlerts = toggleOomAlerts;
+
+        function renderOomAlerts() {
+            const el = document.getElementById('oomAlerts');
+            if (!allOomKills.length) { el.innerHTML = ''; el.style.display = 'none'; return; }
+
+            el.innerHTML = allOomKills.map(oom => `
+    <div class="oom-alert">
+      <div class="oom-title">OOM Kill: ${oom.victim_name} (PID ${oom.pid})</div>
+      <div class="oom-detail">
+        at T+${fmtTime(oom.time_s)} &middot; oom_score_adj: ${oom.oom_score_adj}
+      </div>
+      <div class="oom-mem">
+        Virtual: <b>${fmtKB(oom.total_vm_kb)}</b> &middot;
+        Anon RSS: <b>${fmtKB(oom.anon_rss_kb)}</b> &middot;
+        File RSS: <b>${fmtKB(oom.file_rss_kb)}</b> &middot;
+        Shmem: <b>${fmtKB(oom.shmem_rss_kb)}</b> &middot;
+        Page Tables: <b>${fmtKB(oom.pgtables_kb)}</b>
+      </div>
+    </div>
+  `).join('');
+            // Keep collapsed until user clicks the anomaly card
+        }
+
+        // ── System Metrics Charts ───────────────────────────────────────────────────
+
+        function oomMarkLines() {
+            if (!allOomKills.length || !allMetrics.length) return {};
+            return {
+                markLine: {
+                    silent: true,
+                    symbol: 'none',
+                    lineStyle: { color: '#ef4444', type: 'dashed', width: 2 },
+                    label: { formatter: p => 'OOM', color: '#ef4444', fontSize: 10 },
+                    data: allOomKills.map(oom => ({
+                        xAxis: fmtTime(oom.time_s),
+                    })),
+                }
+            };
+        }
+
+        function renderMetricsCharts() {
+            const metricsRows = ['metricsSection', 'metricsRow1', 'metricsRow2'];
+            if (!allMetrics.length) {
+                metricsRows.forEach(id => document.getElementById(id).style.display = 'none');
+                return;
+            }
+            document.getElementById('metricsSection').style.display = '';
+            document.getElementById('metricsRow1').style.display = 'flex';
+            document.getElementById('metricsRow2').style.display = 'flex';
+
+            const times = allMetrics.map(m => fmtTime(m.time_s));
+            renderCpuChart(times);
+            renderMemChart(times);
+            renderDiskChart(times);
+            renderNetChart(times);
+        }
+
+        function renderCpuChart(times) {
+            const el = document.getElementById('cpuChart');
+            el.style.height = '250px';
+            if (!cpuChart) { cpuChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => cpuChart.resize()); }
+
+            cpuChart.setOption({
+                title: { text: 'CPU Usage (%)', left: 24, textStyle: { fontSize: 13 } },
+                tooltip: { trigger: 'axis' },
+                legend: { data: ['User', 'System'], right: 24, textStyle: { fontSize: 11 } },
+                grid: { left: 60, right: 24, top: 50, bottom: 30 },
+                xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
+                yAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
+                series: [
+                    {
+                        name: 'User', type: 'line', stack: 'cpu', areaStyle: { opacity: 0.4 },
+                        data: allMetrics.map(m => +m.cpu_user.toFixed(1)), lineStyle: { width: 1 },
+                        symbol: 'circle', symbolSize: 4, itemStyle: { color: '#4fc3f7' }, ...oomMarkLines()
+                    },
+                    {
+                        name: 'System', type: 'line', stack: 'cpu', areaStyle: { opacity: 0.4 },
+                        data: allMetrics.map(m => +m.cpu_system.toFixed(1)), lineStyle: { width: 1 },
+                        symbol: 'circle', symbolSize: 4, itemStyle: { color: '#ff7043' }
+                    },
+                ],
+            }, true);
+        }
+
+        function renderMemChart(times) {
+            const el = document.getElementById('memChart');
+            el.style.height = '250px';
+            if (!memChart) { memChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => memChart.resize()); }
+
+            memChart.setOption({
+                title: { text: 'Memory (MB)', left: 24, textStyle: { fontSize: 13 } },
+                tooltip: { trigger: 'axis' },
+                legend: { data: ['Used', 'Available'], right: 24, textStyle: { fontSize: 11 } },
+                grid: { left: 60, right: 24, top: 50, bottom: 30 },
+                xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
+                yAxis: {
+                    type: 'value',
+                    max: allMetrics.length ? Math.ceil(allMetrics[0].mem_total) : undefined,
+                    axisLabel: { formatter: v => (v / 1024).toFixed(1) + 'G' }
+                },
+                series: [
+                    {
+                        name: 'Used', type: 'line', stack: 'mem', areaStyle: { opacity: 0.4 },
+                        data: allMetrics.map(m => +m.mem_used.toFixed(0)), lineStyle: { width: 1 },
+                        symbol: 'circle', symbolSize: 4, itemStyle: { color: '#ab47bc' }, ...oomMarkLines()
+                    },
+                    {
+                        name: 'Available', type: 'line', stack: 'mem', areaStyle: { opacity: 0.2 },
+                        data: allMetrics.map(m => +m.mem_available.toFixed(0)), lineStyle: { width: 1 },
+                        symbol: 'circle', symbolSize: 4, itemStyle: { color: '#66bb6a' }
+                    },
+                ],
+            }, true);
+        }
+
+        function renderDiskChart(times) {
+            const el = document.getElementById('diskChart');
+            el.style.height = '250px';
+            if (!diskChart) { diskChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => diskChart.resize()); }
+
+            diskChart.setOption({
+                title: { text: 'Disk I/O (MB/s)', left: 24, textStyle: { fontSize: 13 } },
+                tooltip: { trigger: 'axis' },
+                legend: { data: ['Read', 'Write'], right: 24, textStyle: { fontSize: 11 } },
+                grid: { left: 60, right: 24, top: 50, bottom: 30 },
+                xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
+                yAxis: { type: 'value', axisLabel: { formatter: '{value}' } },
+                series: [
+                    { name: 'Read', type: 'bar', data: allMetrics.map(m => +m.disk_read.toFixed(2)), itemStyle: { color: '#4fc3f7' } },
+                    { name: 'Write', type: 'bar', data: allMetrics.map(m => +m.disk_write.toFixed(2)), itemStyle: { color: '#ff7043' } },
+                ],
+            }, true);
+        }
+
+        function renderNetChart(times) {
+            const el = document.getElementById('netChart');
+            el.style.height = '250px';
+            if (!netChart) { netChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => netChart.resize()); }
+
+            netChart.setOption({
+                title: { text: 'Network I/O (MB/s)', left: 24, textStyle: { fontSize: 13 } },
+                tooltip: { trigger: 'axis' },
+                legend: { data: ['RX', 'TX'], right: 24, textStyle: { fontSize: 11 } },
+                grid: { left: 60, right: 24, top: 50, bottom: 30 },
+                xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
+                yAxis: { type: 'value', axisLabel: { formatter: '{value}' } },
+                series: [
+                    {
+                        name: 'RX', type: 'line', areaStyle: { opacity: 0.3 },
+                        data: allMetrics.map(m => +m.net_rx.toFixed(4)), lineStyle: { width: 1 },
+                        symbol: 'circle', symbolSize: 4, itemStyle: { color: '#26a69a' }
+                    },
+                    {
+                        name: 'TX', type: 'line', areaStyle: { opacity: 0.3 },
+                        data: allMetrics.map(m => +m.net_tx.toFixed(4)), lineStyle: { width: 1 },
+                        symbol: 'circle', symbolSize: 4, itemStyle: { color: '#ffa726' }
+                    },
+                ],
+            }, true);
+        }
+
+        // ── eBPF Insight Charts ─────────────────────────────────────────────────────
+
+        function renderEbpfCharts() {
+            const hasRawData = allBlockIo.length || allSchedLatency.length;
+            document.getElementById('ebpfSection').style.display = hasRawData ? '' : 'none';
+            document.getElementById('ebpfChartRow').style.display = hasRawData ? 'flex' : 'none';
+            if (hasRawData) {
+                renderBlockIoChart();
+                renderSchedChart();
+            }
+
+            const hasSummaryData = allBlockIoSummaries.length || allSchedSummaries.length;
+            document.getElementById('summarySection').style.display = hasSummaryData ? '' : 'none';
+            document.getElementById('summaryChartRow').style.display = hasSummaryData ? 'flex' : 'none';
+            if (hasSummaryData) {
+                renderBlockIoSummaryChart();
+                renderSchedSummaryChart();
+            }
+        }
+
+        function renderBlockIoChart() {
+            const el = document.getElementById('blockIoChart');
+            el.style.height = '300px';
+            if (!blockIoChart) { blockIoChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => blockIoChart.resize()); }
+
+            if (!allBlockIo.length) {
+                blockIoChart.setOption({ title: { text: 'Block I/O Latency (no data)', left: 24, textStyle: { fontSize: 13, color: '#666' } } }, true);
+                return;
+            }
+
+            let data = allBlockIo;
+            if (data.length > 5000) {
+                const step = Math.ceil(data.length / 5000);
+                data = data.filter((_, i) => i % step === 0);
+            }
+
+            const readData = data.filter(e => e.isRead).map(e => [e.time_s, e.latency_ms]);
+            const writeData = data.filter(e => !e.isRead).map(e => [e.time_s, e.latency_ms]);
+
+            const oomLines = allOomKills.length ? {
+                markLine: {
+                    silent: true, symbol: 'none',
+                    lineStyle: { color: '#ef4444', type: 'dashed', width: 2 },
+                    label: { formatter: 'OOM', color: '#ef4444', fontSize: 10 },
+                    data: allOomKills.map(oom => ({ xAxis: oom.time_s })),
+                }
+            } : {};
+
+            blockIoChart.setOption({
+                title: { text: `Block I/O Latency (${allBlockIo.length} events)`, left: 24, textStyle: { fontSize: 13 } },
+                tooltip: {
+                    trigger: 'item',
+                    formatter: p => `${p.seriesName}<br>T+${fmtTime(p.data[0])}<br>Latency: ${p.data[1].toFixed(2)}ms`
+                },
+                legend: { data: ['Read', 'Write'], right: 24, textStyle: { fontSize: 11 } },
+                grid: { left: 80, right: 24, top: 50, bottom: 50 },
+                xAxis: {
+                    type: 'value', name: 'Time', nameLocation: 'middle', nameGap: 30,
+                    axisLabel: { formatter: v => fmtTime(v) }
+                },
+                yAxis: {
+                    type: 'log', name: 'Latency (ms)', min: 0.001,
+                    axisLabel: { formatter: v => v >= 1 ? v.toFixed(0) + 'ms' : (v * 1000).toFixed(0) + 'us' }
+                },
+                dataZoom: [{ type: 'inside' }, { type: 'slider', bottom: 10, height: 20 }],
+                series: [
+                    {
+                        name: 'Read', type: 'scatter', data: readData, symbolSize: 3,
+                        itemStyle: { color: '#4fc3f7', opacity: 0.6 }, ...oomLines
+                    },
+                    {
+                        name: 'Write', type: 'scatter', data: writeData, symbolSize: 3,
+                        itemStyle: { color: '#ff7043', opacity: 0.6 }
+                    },
+                ],
+            }, true);
+        }
+
+        function renderSchedChart() {
+            const el = document.getElementById('schedChart');
+            el.style.height = '300px';
+            if (!schedChart) { schedChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => schedChart.resize()); }
+
+            if (!allSchedLatency.length) {
+                schedChart.setOption({ title: { text: 'Scheduler Latency (no data)', left: 24, textStyle: { fontSize: 13, color: '#666' } } }, true);
+                return;
+            }
+
+            const byName = new Map();
+            for (const e of allSchedLatency) {
+                const arr = byName.get(e.name) || [];
+                arr.push(e);
+                byName.set(e.name, arr);
+            }
+            const topNames = [...byName.entries()]
+                .sort((a, b) => Math.max(...b[1].map(e => e.latency_ms)) - Math.max(...a[1].map(e => e.latency_ms)))
+                .slice(0, 10)
+                .map(e => e[0]);
+
+            const colors = ['#4fc3f7', '#ff7043', '#66bb6a', '#ab47bc', '#ffa726', '#26a69a', '#ef5350', '#78909c', '#ffca28', '#8d6e63'];
+
+            const oomLines = allOomKills.length ? {
+                markLine: {
+                    silent: true, symbol: 'none',
+                    lineStyle: { color: '#ef4444', type: 'dashed', width: 2 },
+                    label: { formatter: 'OOM', color: '#ef4444', fontSize: 10 },
+                    data: allOomKills.map(oom => ({ xAxis: oom.time_s })),
+                }
+            } : {};
+
+            schedChart.setOption({
+                title: { text: `Scheduler Latency (${allSchedLatency.length} events, >5ms)`, left: 24, textStyle: { fontSize: 13 } },
+                tooltip: {
+                    trigger: 'item',
+                    formatter: p => `${p.seriesName}<br>T+${fmtTime(p.data[0])}<br>Latency: ${p.data[1].toFixed(1)}ms`
+                },
+                legend: { data: topNames, right: 24, textStyle: { fontSize: 10 }, type: 'scroll' },
+                grid: { left: 80, right: 24, top: 50, bottom: 50 },
+                xAxis: {
+                    type: 'value', name: 'Time', nameLocation: 'middle', nameGap: 30,
+                    axisLabel: { formatter: v => fmtTime(v) }
+                },
+                yAxis: {
+                    type: 'value', name: 'Latency (ms)',
+                    axisLabel: { formatter: v => v.toFixed(0) + 'ms' }
+                },
+                dataZoom: [{ type: 'inside' }, { type: 'slider', bottom: 10, height: 20 }],
+                series: topNames.map((name, i) => ({
+                    name,
+                    type: 'scatter',
+                    data: (byName.get(name) || []).map(e => [e.time_s, e.latency_ms]),
+                    symbolSize: 5,
+                    itemStyle: { color: colors[i % colors.length], opacity: 0.7 },
+                    ...(i === 0 ? oomLines : {}),
+                })),
+            }, true);
+        }
+
+        // ── Aggregated Summary Charts ────────────────────────────────────────────────
+
+        function renderBlockIoSummaryChart() {
+            const el = document.getElementById('blockIoSummaryChart');
+            el.style.height = '300px';
+            if (!blockIoSummaryChart) { blockIoSummaryChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => blockIoSummaryChart.resize()); }
+
+            if (!allBlockIoSummaries.length) {
+                blockIoSummaryChart.setOption({ title: { text: 'Block I/O Summary (no data)', left: 24, textStyle: { fontSize: 13, color: '#666' } } }, true);
+                return;
+            }
+
+            const times = allBlockIoSummaries.map(s => fmtTime(s.time_s));
+            const totalEvents = allBlockIoSummaries.reduce((s, e) => s + e.reads.count + e.writes.count, 0);
+
+            blockIoSummaryChart.setOption({
+                title: { text: `Block I/O Latency (${totalEvents} events aggregated)`, left: 24, textStyle: { fontSize: 13 } },
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: params => {
+                        const idx = params[0].dataIndex;
+                        const s = allBlockIoSummaries[idx];
+                        let html = `<b>T+${fmtTime(s.time_s)}</b> (${s.window_s}s window)<br>`;
+                        if (s.reads.count > 0) {
+                            html += `<b>Reads:</b> ${s.reads.count} &middot; p50: ${s.reads.latency.p50_ms.toFixed(2)}ms &middot; p99: ${s.reads.latency.p99_ms.toFixed(2)}ms<br>`;
+                        }
+                        if (s.writes.count > 0) {
+                            html += `<b>Writes:</b> ${s.writes.count} &middot; p50: ${s.writes.latency.p50_ms.toFixed(2)}ms &middot; p99: ${s.writes.latency.p99_ms.toFixed(2)}ms<br>`;
+                        }
+                        return html;
+                    }
+                },
+                legend: { data: ['Read p50', 'Read p99', 'Write p50', 'Write p99'], right: 24, textStyle: { fontSize: 10 } },
+                grid: { left: 80, right: 24, top: 50, bottom: 30 },
+                xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
+                yAxis: {
+                    type: 'log', name: 'Latency', min: 0.001,
+                    axisLabel: { formatter: v => v >= 1 ? v.toFixed(0) + 'ms' : (v * 1000).toFixed(0) + 'us' }
+                },
+                series: [
+                    {
+                        name: 'Read p50', type: 'line',
+                        data: allBlockIoSummaries.map(s => s.reads.count > 0 ? s.reads.latency.p50_ms : null),
+                        lineStyle: { width: 1 }, symbol: 'circle', symbolSize: 4,
+                        itemStyle: { color: '#4fc3f7' }, connectNulls: true,
+                    },
+                    {
+                        name: 'Read p99', type: 'line',
+                        data: allBlockIoSummaries.map(s => s.reads.count > 0 ? s.reads.latency.p99_ms : null),
+                        lineStyle: { width: 1, type: 'dashed' }, symbol: 'diamond', symbolSize: 4,
+                        itemStyle: { color: '#4fc3f7', opacity: 0.6 }, connectNulls: true,
+                    },
+                    {
+                        name: 'Write p50', type: 'line',
+                        data: allBlockIoSummaries.map(s => s.writes.count > 0 ? s.writes.latency.p50_ms : null),
+                        lineStyle: { width: 1 }, symbol: 'circle', symbolSize: 4,
+                        itemStyle: { color: '#ff7043' }, connectNulls: true,
+                    },
+                    {
+                        name: 'Write p99', type: 'line',
+                        data: allBlockIoSummaries.map(s => s.writes.count > 0 ? s.writes.latency.p99_ms : null),
+                        lineStyle: { width: 1, type: 'dashed' }, symbol: 'diamond', symbolSize: 4,
+                        itemStyle: { color: '#ff7043', opacity: 0.6 }, connectNulls: true,
+                    },
+                ],
+            }, true);
+        }
+
+        function renderSchedSummaryChart() {
+            const el = document.getElementById('schedSummaryChart');
+            el.style.height = '300px';
+            if (!schedSummaryChart) { schedSummaryChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => schedSummaryChart.resize()); }
+
+            if (!allSchedSummaries.length) {
+                schedSummaryChart.setOption({ title: { text: 'Scheduler Latency Summary (no data)', left: 24, textStyle: { fontSize: 13, color: '#666' } } }, true);
+                return;
+            }
+
+            const times = allSchedSummaries.map(s => fmtTime(s.time_s));
+            const totalEvents = allSchedSummaries.reduce((s, e) => s + e.count, 0);
+
+            schedSummaryChart.setOption({
+                title: { text: `Scheduler Latency (${totalEvents} events aggregated)`, left: 24, textStyle: { fontSize: 13 } },
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: params => {
+                        const idx = params[0].dataIndex;
+                        const s = allSchedSummaries[idx];
+                        let html = `<b>T+${fmtTime(s.time_s)}</b> (${s.window_s}s window)<br>`;
+                        html += `Events: ${s.count}<br>`;
+                        html += `p50: ${s.latency.p50_ms.toFixed(2)}ms &middot; p95: ${s.latency.p95_ms.toFixed(2)}ms &middot; p99: ${s.latency.p99_ms.toFixed(2)}ms<br>`;
+                        html += `max: ${s.latency.max_ms.toFixed(2)}ms<br>`;
+                        if (s.top_processes.length) {
+                            html += '<br><b>Top processes:</b><br>';
+                            for (const p of s.top_processes) {
+                                html += `&nbsp; ${p.name} x${p.count} (max ${p.max_latency_ms.toFixed(2)}ms)<br>`;
+                            }
+                        }
+                        return html;
+                    }
+                },
+                legend: { data: ['p50', 'p95', 'p99', 'max', 'count'], right: 24, textStyle: { fontSize: 10 } },
+                grid: { left: 80, right: 60, top: 50, bottom: 30 },
+                xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
+                yAxis: [
+                    {
+                        type: 'value', name: 'Latency (ms)', position: 'left',
+                        axisLabel: { formatter: v => v.toFixed(0) + 'ms' }
+                    },
+                    {
+                        type: 'value', name: 'Count', position: 'right',
+                        axisLabel: { formatter: v => v.toFixed(0) },
+                        splitLine: { show: false },
+                    },
+                ],
+                series: [
+                    {
+                        name: 'p50', type: 'line', yAxisIndex: 0,
+                        data: allSchedSummaries.map(s => s.latency.p50_ms),
+                        lineStyle: { width: 2 }, symbol: 'circle', symbolSize: 4,
+                        itemStyle: { color: '#66bb6a' },
+                    },
+                    {
+                        name: 'p95', type: 'line', yAxisIndex: 0,
+                        data: allSchedSummaries.map(s => s.latency.p95_ms),
+                        lineStyle: { width: 1, type: 'dashed' }, symbol: 'diamond', symbolSize: 4,
+                        itemStyle: { color: '#ffa726' },
+                    },
+                    {
+                        name: 'p99', type: 'line', yAxisIndex: 0,
+                        data: allSchedSummaries.map(s => s.latency.p99_ms),
+                        lineStyle: { width: 1, type: 'dotted' }, symbol: 'triangle', symbolSize: 4,
+                        itemStyle: { color: '#ef5350' },
+                    },
+                    {
+                        name: 'max', type: 'scatter', yAxisIndex: 0,
+                        data: allSchedSummaries.map(s => s.latency.max_ms),
+                        symbolSize: 6, itemStyle: { color: '#ef4444', opacity: 0.8 },
+                    },
+                    {
+                        name: 'count', type: 'bar', yAxisIndex: 1,
+                        data: allSchedSummaries.map(s => s.count),
+                        itemStyle: { color: '#4fc3f7', opacity: 0.3 },
+                        barMaxWidth: 20,
+                    },
+                ],
+            }, true);
+        }
+
+        // ── Inspector Panel ──────────────────────────────────────────────────────────
+
+        function renderInspector(node) {
+            const el = document.getElementById('inspector');
+            el.style.display = 'block';
+
+            const exitText = node.exit_code != null
+                ? (node.exit_code === 0 ? 'Success (0)' : `Failed (${node.exit_code})`)
+                : 'Running';
+            const exitClass = node.exit_code != null
+                ? (node.exit_code === 0 ? 'ok' : 'fail')
+                : 'running';
+
+            const cmdLine = (node.filename || '') + (node.args && node.args.length > 1 ? ' ' + node.args.slice(1).join(' ') : '');
+            const ebpf = node.ebpf || {};
+            let ebpfHtml = '';
+
+            if (ebpf.sched_count > 0) {
+                const severity = ebpf.sched_max_ms > 50 ? 'color:#ef4444' : ebpf.sched_max_ms > 20 ? 'color:#ffa726' : 'color:#22c55e';
+                ebpfHtml += `<div class="ebpf-stat">
+                    <div class="stat-label">CPU Wait (Sched Latency)</div>
+                    <div class="stat-value" style="${severity}">${ebpf.sched_avg_ms.toFixed(1)}ms avg</div>
+                    <div class="stat-detail">max ${ebpf.sched_max_ms.toFixed(1)}ms &middot; p99 ${ebpf.sched_p99_ms.toFixed(1)}ms &middot; ${ebpf.sched_count} events</div>
+                </div>`;
+            }
+            if (ebpf.block_io_read_count > 0) {
+                ebpfHtml += `<div class="ebpf-stat">
+                    <div class="stat-label">Disk Read</div>
+                    <div class="stat-value">${ebpf.block_io_read_avg_ms.toFixed(2)}ms avg</div>
+                    <div class="stat-detail">max ${ebpf.block_io_read_max_ms.toFixed(2)}ms &middot; ${ebpf.block_io_read_count} ops</div>
+                </div>`;
+            }
+            if (ebpf.block_io_write_count > 0) {
+                ebpfHtml += `<div class="ebpf-stat">
+                    <div class="stat-label">Disk Write</div>
+                    <div class="stat-value">${ebpf.block_io_write_avg_ms.toFixed(2)}ms avg</div>
+                    <div class="stat-detail">max ${ebpf.block_io_write_max_ms.toFixed(2)}ms &middot; ${ebpf.block_io_write_count} ops</div>
+                </div>`;
+            }
+            if (!ebpfHtml) {
+                ebpfHtml = '<div style="color:#999;font-size:12px">No eBPF data for this process</div>';
+            }
+
+            const name = node.display_name || node.name || 'Unknown';
+            const dur = node.duration_ms;
+            const startS = node.start_s != null ? node.start_s : (node.start_ms != null ? node.start_ms / 1000 : null);
+
+            el.innerHTML = `
+                <button class="inspector-close" onclick="clearSelection()">&#x2715; Close</button>
+                <div class="inspector-header">
+                    <div>
+                        <div class="inspector-title">${name} <span style="color:#888;font-weight:normal">(PID ${node.pid})</span></div>
+                    </div>
+                    <div class="inspector-exit ${exitClass}">${exitText}</div>
+                </div>
+                <div class="inspector-cmd">${cmdLine}</div>
+                <div style="font-size:12px;color:#555;margin-bottom:4px">Duration: <b style="color:#1a1a2e">${fmtMs(dur)}</b>${startS != null ? ' &middot; Start: T+' + fmtTime(startS) : ''}
+                    ${node.on_critical_path ? ' &middot; <span style="color:#d84315">Critical Path</span>' : ''}</div>
+                <div style="font-size:12px;color:#555;margin-bottom:8px">Children: ${node.children ? node.children.length : 0}</div>
+                <div style="font-size:11px;color:#777;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">eBPF Correlated Insights</div>
+                <div class="ebpf-grid">${ebpfHtml}</div>
+            `;
+        }
+
+        // ── Execution Tree (Gantt) ──────────────────────────────────────────────────
+
+        function getVisibleRows(nodes, depth) {
+            const rows = [];
+            for (const node of nodes) {
+                const hasChildren = node.children && node.children.length > 0;
+                const isExpanded = expandedPids.has(node.pid);
+                rows.push({ node, depth, hasChildren, isExpanded });
+                if (hasChildren && isExpanded) {
+                    rows.push(...getVisibleRows(node.children, depth + 1));
+                }
+            }
+            return rows;
+        }
+
+        function renderGantt() {
+            const container = document.getElementById('gantt-chart');
+            const wrapper = document.getElementById('gantt-wrapper');
+            const zoomEl = document.getElementById('gantt-zoom');
+            const truncEl = document.getElementById('gantt-truncated');
+            if (!allProcessTree.length) {
+                container.style.height = '0px'; wrapper.style.display = 'none'; zoomEl.style.display = 'none'; truncEl.style.display = 'none';
+                if (ganttZoomChart) { ganttZoomChart.dispose(); ganttZoomChart = null; }
+                return;
+            }
+            wrapper.style.display = '';
+
+            // Determine the tree source: if selectedPids is set, find the
+            // selected root node and show its subtree; otherwise show full tree
+            let treeSource = allProcessTree;
+            if (selectedPids && selectedPids.size > 0) {
+                // Find the root of the selected subtree (the node whose pid
+                // is in selectedPids and whose parent is NOT in selectedPids)
+                const findSelectedRoot = (nodes) => {
+                    for (const node of nodes) {
+                        if (selectedPids.has(node.pid)) {
+                            // Check if this is the top-most selected node
+                            // (its parent wouldn't be in the nodes we're iterating from allProcessTree root)
+                            return node;
+                        }
+                        if (node.children) {
+                            const found = findSelectedRoot(node.children);
+                            if (found) return found;
+                        }
+                    }
+                    return null;
+                };
+                const selectedRoot = findSelectedRoot(allProcessTree);
+                if (selectedRoot) {
+                    // Auto-expand the selected root so its children are visible
+                    expandedPids.add(selectedRoot.pid);
+                    treeSource = [selectedRoot];
+                }
+            }
+
+            // Apply filters by pruning the tree bottom-up: a parent is kept
+            // only if it passes the filter itself or has a descendant that does.
+            const hideWrappers = document.getElementById('hideWrappers').checked;
+            const minDuration = parseFloat(document.getElementById('minDuration').value) || 0;
+            const search = document.getElementById('searchInput').value.toLowerCase().trim();
+            const needsFilter = search || minDuration > 0 || hideWrappers;
+
+            function nodePassesFilter(n) {
+                if (hideWrappers && n.wrapper) return false;
+                if (minDuration > 0 && n.duration_ms < minDuration) return false;
+                if (search) {
+                    const nameMatch = (n.display_name || '').toLowerCase().includes(search);
+                    const fileMatch = (n.filename || '').toLowerCase().includes(search);
+                    const pidMatch = String(n.pid).includes(search);
+                    if (!nameMatch && !fileMatch && !pidMatch) return false;
+                }
+                return true;
+            }
+
+            function pruneTree(nodes) {
+                const result = [];
+                for (const node of nodes) {
+                    const filteredChildren = node.children ? pruneTree(node.children) : [];
+                    if (nodePassesFilter(node) || filteredChildren.length > 0) {
+                        result.push({ ...node, children: filteredChildren });
+                    }
+                }
+                return result;
+            }
+
+            const filteredTree = needsFilter ? pruneTree(treeSource) : treeSource;
+            let rows = getVisibleRows(filteredTree, 0);
+
+            if (!rows.length) {
+                container.style.height = '60px';
+                if (ganttChart) { ganttChart.dispose(); ganttChart = null; }
+                if (ganttZoomChart) { ganttZoomChart.dispose(); ganttZoomChart = null; }
+                container.innerHTML = '<div style="color:#666;padding:20px;text-align:center">No matching processes</div>';
+                zoomEl.style.display = 'none';
+                truncEl.style.display = 'none';
+                return;
+            }
+
+            const MAX_GANTT_ROWS = 200;
+            const totalRows = rows.length;
+            if (totalRows > MAX_GANTT_ROWS) {
+                const maxPage = Math.ceil(totalRows / MAX_GANTT_ROWS) - 1;
+                if (ganttPage > maxPage) ganttPage = maxPage;
+                const start = ganttPage * MAX_GANTT_ROWS;
+                const end = Math.min(start + MAX_GANTT_ROWS, totalRows);
+                rows = rows.slice(start, end);
+
+                const prevBtn = ganttPage > 0
+                    ? `<button onclick="window._ganttPageNav(-1)" style="background:#333;color:#ccc;border:1px solid #555;border-radius:4px;padding:2px 10px;cursor:pointer;font-size:11px">&#9664; Prev</button> `
+                    : '';
+                const nextBtn = ganttPage < maxPage
+                    ? ` <button onclick="window._ganttPageNav(1)" style="background:#333;color:#ccc;border:1px solid #555;border-radius:4px;padding:2px 10px;cursor:pointer;font-size:11px">Next &#9654;</button>`
+                    : '';
+                truncEl.innerHTML = `Showing ${start + 1}\u2013${end} of ${totalRows} rows ${prevBtn}${nextBtn}`;
+                truncEl.style.display = '';
+            } else {
+                ganttPage = 0;
+                truncEl.style.display = 'none';
+            }
+            zoomEl.style.display = '';
+
+            // Compute time range from visible rows, but origin from full tree
+            let minTime = Infinity, maxTime = -Infinity;
+            for (const r of rows) {
+                const start = r.node.start_s;
+                const end = r.node.end_s != null ? r.node.end_s : start + (r.node.duration_ms || 0) / 1000;
+                if (start < minTime) minTime = start;
+                if (end > maxTime) maxTime = end;
+            }
+            // Global origin: earliest start across all processes
+            let timeOrigin = Infinity;
+            for (const p of allProcesses) {
+                if (p.start_s < timeOrigin) timeOrigin = p.start_s;
+            }
+            const timeRange = maxTime - minTime || 1;
+            minTime -= timeRange * 0.01;
+            maxTime += timeRange * 0.01;
+
+            // Category labels with tree indent
+            const categories = rows.map(r => {
+                const indent = '\u2003'.repeat(r.depth);
+                const icon = r.hasChildren ? (r.isExpanded ? '\u25BC ' : '\u25B6 ') : '  ';
+                const count = r.hasChildren ? ` (${r.node.children.length})` : '';
+                const name = r.node.display_name || r.node.name || 'Unknown';
+                return indent + icon + name + count;
+            });
+
+            // Bar data and metadata
+            const barData = [];
+            const barMeta = [];
+            rows.forEach((r, i) => {
+                const start = r.node.start_s ?? 0;
+                const end = r.node.end_s != null ? r.node.end_s : start + (r.node.duration_ms || 0) / 1000;
+                const isFail = r.node.exit_code != null && r.node.exit_code !== 0;
+                const color = r.node.on_critical_path ? '#ff7043'
+                    : isFail ? '#ef4444'
+                        : r.node.exit_code === 0 ? '#22c55e' : '#666';
+                barData.push({ value: [i, start, end, barMeta.length] });
+                barMeta.push({ row: r, color });
+            });
+
+            // Fixed row height — chart grows with content, wrapper scrolls
+            const ROW_H = 28;
+            const chartH = Math.max(200, rows.length * ROW_H + 30);
+            container.style.height = chartH + 'px';
+
+            if (ganttChart) { ganttChart.dispose(); ganttChart = null; }
+            container.innerHTML = '';
+            ganttChart = echarts.init(container, 'dark');
+
+            // Main chart — no slider dataZoom, only inside (scroll) zoom
+            ganttChart.setOption({
+                tooltip: {
+                    trigger: 'item',
+                    formatter: (params) => {
+                        const meta = barMeta[params.data.value[3]];
+                        if (!meta) return '';
+                        const n = meta.row.node;
+                        const dur = n.duration_ms;
+                        const exitText = n.exit_code != null ? (n.exit_code === 0 ? 'OK' : `Exit ${n.exit_code}`) : 'Running';
+                        return `<b>${n.display_name || n.name}</b> (PID ${n.pid})<br/>` +
+                            `Duration: ${fmtMs(dur)}<br/>` +
+                            `Status: ${exitText}<br/>` +
+                            (n.children && n.children.length ? `Children: ${n.children.length}` : '');
+                    },
+                },
+                grid: { left: 200, right: 30, top: 10, bottom: 4 },
+                xAxis: {
+                    type: 'value',
+                    min: minTime,
+                    max: maxTime,
+                    axisLabel: { show: false },
+                    axisTick: { show: false },
+                    axisLine: { show: false },
+                    splitLine: { lineStyle: { color: '#222' } },
+                },
+                yAxis: {
+                    type: 'category',
+                    data: categories,
+                    inverse: true,
+                    axisLabel: {
+                        fontSize: 11,
+                        width: 180,
+                        overflow: 'truncate',
+                        color: '#ccc',
+                    },
+                    axisTick: { show: false },
+                    splitLine: { show: false },
+                },
+                dataZoom: [{ type: 'inside', xAxisIndex: 0 }],
+                series: [{
+                    type: 'custom',
+                    renderItem: (params, api) => {
+                        try {
+                            const catIdx = api.value(0);
+                            const startVal = api.value(1);
+                            const endVal = api.value(2);
+                            if (startVal == null || isNaN(startVal)) return null;
+                            const start = api.coord([startVal, catIdx]);
+                            const end = api.coord([endVal ?? startVal, catIdx]);
+                            const metaIdx = api.value(3);
+                            const meta = barMeta[metaIdx];
+                            const bandWidth = api.size([0, 1])[1];
+                            const barH = Math.max(bandWidth * 0.6, 4);
+
+                            return {
+                                type: 'rect',
+                                shape: {
+                                    x: start[0],
+                                    y: start[1] - barH / 2,
+                                    width: Math.max(end[0] - start[0], 2),
+                                    height: barH,
+                                },
+                                style: {
+                                    fill: meta ? meta.color : '#666',
+                                },
+                            };
+                        } catch (e) { console.error('[gantt] renderItem failed:', e); return null; }
+                    },
+                    encode: { x: [1, 2], y: 0 },
+                    data: barData,
+                }],
+            }, true);
+
+            // ── Sticky zoom slider (separate chart below the scrollable wrapper) ──
+            zoomEl.style.height = '90px';
+
+            if (ganttZoomChart) { ganttZoomChart.dispose(); ganttZoomChart = null; }
+            ganttZoomChart = echarts.init(zoomEl, 'dark');
+
+            ganttZoomChart.setOption({
+                grid: { left: 200, right: 30, top: 4, bottom: 40 },
+                xAxis: {
+                    type: 'value',
+                    min: minTime,
+                    max: maxTime,
+                    axisLabel: {
+                        formatter: v => fmtTime(v - timeOrigin),
+                        color: '#888',
+                        fontSize: 11,
+                    },
+                    axisTick: { lineStyle: { color: '#444' } },
+                    axisLine: { lineStyle: { color: '#444' } },
+                    splitLine: { show: false },
+                },
+                yAxis: { show: false },
+                dataZoom: [{
+                    type: 'slider',
+                    xAxisIndex: 0,
+                    bottom: 2,
+                    height: 20,
+                    showDetail: true,
+                    borderColor: '#444',
+                    fillerColor: 'rgba(79,195,247,0.15)',
+                    handleStyle: { color: '#4fc3f7' },
+                    labelFormatter: v => fmtTime(v - timeOrigin),
+                }],
+                series: [{ type: 'custom', data: [], renderItem: () => null }],
+            }, true);
+
+            // Sync zoom: slider → main chart
+            let syncing = false;
+            ganttZoomChart.on('dataZoom', () => {
+                if (syncing) return;
+                syncing = true;
+                const opt = ganttZoomChart.getOption().dataZoom[0];
+                ganttChart.dispatchAction({ type: 'dataZoom', start: opt.start, end: opt.end });
+                syncing = false;
+            });
+
+            // Sync zoom: main chart (inside scroll) → slider
+            ganttChart.on('dataZoom', () => {
+                if (syncing) return;
+                syncing = true;
+                const opt = ganttChart.getOption().dataZoom[0];
+                ganttZoomChart.dispatchAction({ type: 'dataZoom', start: opt.start, end: opt.end });
+                syncing = false;
+            });
+
+            function handleGanttClick(row) {
+                const node = row.node;
+                const wasExpanded = row.hasChildren && expandedPids.has(node.pid);
+
+                if (row.hasChildren) {
+                    if (wasExpanded) {
+                        expandedPids.delete(node.pid);
+                    } else {
+                        expandedPids.add(node.pid);
+                    }
+                }
+
+                ganttPage = 0;
+                if (wasExpanded) {
+                    selectedPids = null;
+                    document.getElementById('inspector').style.display = 'none';
+                } else {
+                    selectedPids = new Set();
+                    collectPids(node, selectedPids);
+                    renderInspector(node);
+                }
+                render();
+            }
+
+            // Click handler for bars
+            ganttChart.off('click');
+            ganttChart.on('click', (params) => {
+                try {
+                    if (!params.data) return;
+                    const meta = barMeta[params.data.value[3]];
+                    if (!meta) return;
+                    handleGanttClick(meta.row);
+                } catch (e) { console.error('[gantt] bar click failed:', e); }
+            });
+
+            // Click on y-axis labels
+            ganttChart.getZr().off('click');
+            ganttChart.getZr().on('click', (params) => {
+                try {
+                    const pointInPixel = [params.offsetX, params.offsetY];
+                    if (pointInPixel[0] < 200) {
+                        const pointInGrid = ganttChart.convertFromPixel('grid', pointInPixel);
+                        if (pointInGrid) {
+                            const rowIdx = Math.round(pointInGrid[1]);
+                            if (rowIdx >= 0 && rowIdx < rows.length) {
+                                handleGanttClick(rows[rowIdx]);
+                            }
+                        }
+                    }
+                } catch (e) { console.error('[gantt] label click failed:', e); }
+            });
+        }
+
+        // ── Scatter Plot ────────────────────────────────────────────────────────────
+
+        function renderScatter(processes) {
+            const container = document.getElementById('scatter');
+            if (!processes.length) { container.style.height = '0px'; return; }
+            container.style.height = '350px';
+
+            if (!scatterChart) { scatterChart = echarts.init(container, 'dark'); window.addEventListener('resize', () => scatterChart.resize()); }
+
+            const childCount = new Map();
+            for (const p of allProcesses) childCount.set(p.ppid, (childCount.get(p.ppid) || 0) + 1);
+
+            const data = processes.filter(p => p.duration_ms > 0).map(p => ({
+                value: [p.start_ms, p.duration_ms, childCount.get(p.pid) || 0],
+                itemStyle: { color: p.exit_code === 0 ? '#22c55e' : p.exit_code === null ? '#666' : '#ef4444' },
+                process: p,
+            }));
+
+            scatterChart.setOption({
+                title: { text: 'Process Duration Scatter', left: 24, textStyle: { fontSize: 14 } },
+                tooltip: {
+                    formatter: p => {
+                        const pr = p.data.process;
+                        return `<b>${pr.display_name}</b> (PID ${pr.pid})<br>` +
+                            `Start: ${fmtMs(pr.start_ms)}<br>Duration: ${pr.duration_ms.toFixed(2)}ms<br>` +
+                            `Children: ${p.data.value[2]}<br>Exit: ${pr.exit_code ?? 'running'}<br>` +
+                            `<span style="color:#4fc3f7">Click to filter</span>`;
+                    }
+                },
+                grid: { left: 80, right: 40, top: 50, bottom: 50 },
+                xAxis: {
+                    type: 'value', name: 'Start time', nameLocation: 'middle', nameGap: 30,
+                    axisLabel: { formatter: v => fmtMs(v) }
+                },
+                yAxis: { type: 'log', name: 'Duration (ms)', min: 0.01 },
+                dataZoom: [{ type: 'inside' }],
+                series: [{
+                    type: 'scatter', data,
+                    symbolSize: val => Math.max(6, Math.min(30, 6 + val[2] * 3)),
+                }],
+            }, true);
+
+            // Click: filter table to this process and show inspector
+            scatterChart.off('click');
+            scatterChart.on('click', (params) => {
+                try {
+                    if (!params.data || !params.data.process) return;
+                    const proc = params.data.process;
+
+                    function findTreeNode(nodes, pid) {
+                        for (const n of nodes) {
+                            if (n.pid === pid) return n;
+                            if (n.children) {
+                                const found = findTreeNode(n.children, pid);
+                                if (found) return found;
+                            }
+                        }
+                        return null;
+                    }
+                    const treeNode = findTreeNode(allProcessTree, proc.pid);
+
+                    selectedPids = new Set([proc.pid]);
+                    if (treeNode) {
+                        collectPids(treeNode, selectedPids);
+                        renderInspector(treeNode);
+                    } else {
+                        renderInspector(proc);
+                    }
+
+                    render();
+                } catch (e) { console.error('[scatter] click failed:', e); }
+            });
+        }
+
+        // ── Process Table ───────────────────────────────────────────────────────────
+
+        function renderTable(processes) {
+            const capped = processes.slice(0, 500);
+            const tbody = document.querySelector('#processTable tbody');
+            tbody.innerHTML = capped.map(p => {
+                const exitClass = p.exit_code === null ? '' : p.exit_code === 0 ? 'exit-ok' : 'exit-fail';
+                const wrapperClass = p.wrapper ? 'wrapper-tag' : '';
+                return `<tr class="${wrapperClass}">
+      <td>${p.display_name}</td><td>${p.pid}</td><td>${p.ppid}</td>
+      <td>${p.duration_ms.toFixed(2)}</td><td class="${exitClass}">${p.exit_code ?? '-'}</td>
+      <td>${p.filename}</td><td>${p.args.slice(1).join(' ')}</td></tr>`;
+            }).join('');
+        }
+
+        // ── Auto-load default file ──────────────────────────────────────────────────
+
+        fetch('profiler-events.jsonl')
+            .then(r => r.text())
+            .then(text => { if (text.trim()) loadJsonl(text); })
+            .catch(() => { });
+
+        // ── Table Sorting ───────────────────────────────────────────────────────────
+
+        document.querySelectorAll('#processTable th').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.col;
+                allProcesses.sort((a, b) => {
+                    const va = a[col] ?? '', vb = b[col] ?? '';
+                    if (typeof va === 'number') return vb - va;
+                    return String(va).localeCompare(String(vb));
+                });
+                render();
+            });
+        });
+    </script>
+</body>
+
+</html>
