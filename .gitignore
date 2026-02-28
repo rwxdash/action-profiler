@@ -94,6 +94,9 @@ typings/
 .DS_Store
 Thumbs.db
 
+# WASM build output symlink
+profiler/tests/pkg
+
 # Ignore built ts files
 __tests__/runner/*
 
@@ -103,3 +106,6 @@ __tests__/runner/*
 
 # Tmp files
 tmp/
+
+# Docs
+docs/

@@ -75,3 +75,39 @@ Events are written as JSON Lines (one JSON object per line):
 | `filename` | Executable path (when available) |
 | `args` | Command arguments (when available) |
 | `exit_code` | Process exit code (for exit events) |
+
+
+## Verification
+
+### OOM Kill
+```bash
+# Run profiler
+sudo ./target/release/profiler --output tests/profiler-events.jsonl --enable-oom
+
+# In another terminal, trigger OOM:
+python3 -c "x = [bytearray(10**6) for _ in range(10000)]"
+
+# Check output:
+jq 'select(.event_type == "oom_kill")' tests/profiler-events.jsonl
+```
+
+### Block I/O
+```bash
+sudo ./target/release/profiler --output tests/profiler-events.jsonl --enable-block-io
+
+# Generate I/O:
+dd if=/dev/zero of=/tmp/testfile bs=1M count=500 oflag=direct
+sync
+
+jq 'select(.event_type == "block_io") | {latency_ms: (.latency_ns / 1e6), op, name}' tests/profiler-events.jsonl
+```
+
+### Scheduler Latency
+```bash
+sudo ./target/release/profiler --output tests/profiler-events.jsonl --enable-sched-latency
+
+# Generate CPU contention:
+stress-ng --cpu 8 --timeout 10s
+
+jq 'select(.event_type == "sched_latency") | {latency_ms: (.latency_ns / 1e6), name}' tests/profiler-events.jsonl
+```

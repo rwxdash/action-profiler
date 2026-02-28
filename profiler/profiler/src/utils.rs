@@ -3,8 +3,7 @@ use std::fs;
 pub fn name_to_bytes(name: &str) -> [u8; 16] {
     let mut bytes = [0u8; 16];
     let name_bytes = name.as_bytes();
-    // Copy up to 15 characters (leaving at least one null byte at the end)
-    let len = name_bytes.len().min(15);
+    let len = name_bytes.len().min(15); // keep last byte null to match kernel TASK_COMM_LEN
     bytes[..len].copy_from_slice(&name_bytes[..len]);
     bytes
 }
@@ -14,8 +13,6 @@ pub fn bytes_to_string(bytes: &[u8]) -> String {
     String::from_utf8_lossy(&bytes[..end]).into_owned()
 }
 
-/// Scan /proc for running processes whose cmdline contains any of the given patterns.
-/// Returns the PIDs of all matching processes.
 pub fn scan_ignored_pids(patterns: &[&str]) -> Vec<u32> {
     let mut pids = Vec::new();
     let entries = match fs::read_dir("/proc") {
