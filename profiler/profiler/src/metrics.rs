@@ -138,8 +138,8 @@ pub fn collect(state: &mut MetricsState, time_ns: u64) -> SystemMetricsRecord {
     record
 }
 
-/// Clamp values below a threshold to 0.0 to avoid floating point dust
-/// in the JSONL output (e.g. 1.7e-13 from cumulative counter rounding).
+// Clamp values below a threshold to 0.0 to avoid floating point dust
+// in the JSONL output (e.g. 1.7e-13 from cumulative counter rounding).
 fn clamp_noise(val: &mut f64) {
     if val.abs() < 1e-6 {
         *val = 0.0;
@@ -257,9 +257,9 @@ fn parse_disk_sample(buf: &str) -> Option<DiskSample> {
     })
 }
 
-/// Heuristic: a "whole disk" device name doesn't end with a digit
-/// (e.g. "sda" not "sda1"), unless it's NVMe ("nvme0n1" is a whole
-/// disk, "nvme0n1p1" is a partition). Skip virtual devices.
+// Heuristic: a "whole disk" device name doesn't end with a digit
+// (e.g. "sda" not "sda1"), unless it's NVMe ("nvme0n1" is a whole
+// disk, "nvme0n1p1" is a partition). Skip virtual devices.
 fn is_whole_disk(name: &str) -> bool {
     if name.starts_with("loop") || name.starts_with("ram") || name.starts_with("dm-") {
         return false;

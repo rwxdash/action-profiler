@@ -24,28 +24,70 @@ pub struct ProcessEvent {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct NetworkEvent {
+pub struct EventHeader {
     pub time_ns: u64,
-    pub pid: u32,        // Process ID
-    pub tgid: u32,       // Thread Group ID
-    pub saddr: u32,      // Source IPv4
-    pub daddr: u32,      // Destination IPv4
-    pub sport: u16,      // Source Port
-    pub dport: u16,      // Destination Port
-    pub bytes_sent: u64, // -
-    pub bytes_recv: u64, // -
-    pub protocol: u8,    // TCP=6, UDP=17
-    pub state: u8,       // Connection State
+    pub event_type: u8,
+}
+
+pub const CONFIG_SCHED_THRESHOLD_NS: u32 = 0;
+pub const CONFIG_BLOCK_IO_THRESHOLD_NS: u32 = 1;
+pub const CONFIG_MAX: u32 = 8;
+
+pub const EVENT_EXEC: u8 = 0;
+pub const EVENT_EXIT: u8 = 1;
+pub const EVENT_OOM_KILL: u8 = 2;
+pub const EVENT_BLOCK_IO: u8 = 3;
+pub const EVENT_SCHED_LATENCY: u8 = 4;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct OomKillEvent {
+    pub time_ns: u64,
+    pub event_type: u8,                       // EVENT_OOM_KILL (2)
+    pub pid: u32,                             // Victim PID
+    pub uid: u32,                             // Victim UID
+    pub total_vm_kb: u64,                     // Total virtual memory (KB, via PG_COUNT_TO_KB)
+    pub anon_rss_kb: u64,                     // Anonymous RSS (KB)
+    pub file_rss_kb: u64,                     // File-backed RSS (KB)
+    pub shmem_rss_kb: u64,                    // Shared memory RSS (KB)
+    pub pgtables_kb: u64,                     // Page table memory (KB, mm_pgtables_bytes >> 10)
+    pub oom_score_adj: i16,                   // OOM score adjustment
+    pub victim_name: [u8; MAX_PROC_NAME_LEN], // Victim comm (from __data_loc)
+    pub oncpu_name: [u8; MAX_PROC_NAME_LEN],  // on-CPU when OOM fired (not necessarily the cause)
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct IoEvent {
+pub struct BlockIoEvent {
     pub time_ns: u64,
-    pub pid: u32,        // Process ID
-    pub tgid: u32,       // Thread Group ID
-    pub bytes: u64,      // -
-    pub latency_ns: u64, // -
-    pub op: u8,          // 0=read, 1=write
-    pub filename: [u8; MAX_FILENAME_LEN],
+    pub event_type: u8,                // EVENT_BLOCK_IO (3)
+    pub dev: u32,                      // Device major:minor
+    pub sector: u64,                   // Starting sector
+    pub nr_sectors: u32,               // Request size in sectors
+    pub latency_ns: u64,               // Time from issue to complete
+    pub rwbs: [u8; 8],                 // R/W/D flags (raw from tracepoint)
+    pub pid: u32,                      // Process that issued the I/O
+    pub name: [u8; MAX_PROC_NAME_LEN], // Process comm
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct BlockIoStash {
+    pub time_ns: u64,
+    pub pid: u32,                      // Process ID
+    pub name: [u8; MAX_PROC_NAME_LEN], // Process comm
+    pub rwbs: [u8; 8],                 // RWBS flags
+    pub nr_sectors: u32,               // Number of sectors
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct SchedLatencyEvent {
+    pub time_ns: u64,
+    pub event_type: u8,                // EVENT_SCHED_LATENCY (4)
+    pub pid: u32,                      // Process ID
+    pub latency_ns: u64,               // Time spent waiting in run queue
+    pub prio: i32,                     // Task priority
+    pub target_cpu: i32,               // CPU the task was scheduled on
+    pub name: [u8; MAX_PROC_NAME_LEN], // Process comm
 }
