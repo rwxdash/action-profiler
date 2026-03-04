@@ -10,10 +10,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Rust nightly + bpf-linker
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly --component rust-src
+          source "$HOME/.cargo/env"
+          cargo install bpf-linker
+
+      - name: Build profiler for this runner
+        run: |
+          source "$HOME/.cargo/env"
+          cd profiler && cargo build --release
+          mkdir -p bin
+          cp target/release/profiler bin/profiler
+          chmod +x bin/profiler
+
       - uses: ./
         id: profiler
         with:
-          metric_frequency: "2"
+          metric_frequency: "5"
 
       # ── Workloads ─────────────────────────────────────────────────
 
@@ -56,7 +70,10 @@ jobs:
           for pid in "${PIDS[@]}"; do wait "$pid" 2>/dev/null || true; done
 
       - name: "Cargo check (process tree)"
-        run: cd profiler && cargo check -p profiler-common 2>&1 | tail -5
+        continue-on-error: true
+        run: |
+          source "$HOME/.cargo/env"
+          cd profiler && cargo check -p profiler-common 2>&1 | tail -5
 
       - name: "Short-lived processes"
         run: |

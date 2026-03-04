@@ -30,10 +30,14 @@ export async function run(): Promise<void> {
       return
     }
 
-    const profilerBin = path.resolve(__dirname, '../../profiler/bin/profiler')
+    const profilerBin = resolveProfilerBin()
 
-    if (!fs.existsSync(profilerBin)) {
-      core.setFailed(`Profiler binary not found at ${profilerBin}`)
+    if (!profilerBin) {
+      const version = getUbuntuVersion()
+      core.warning(
+        `No profiler binary found for this runner${version ? ` (Ubuntu ${version})` : ''}. ` +
+          'Skipping profiling. See https://github.com/rwxdash/action-profiler for supported runners.'
+      )
       return
     }
 
@@ -79,6 +83,32 @@ export async function run(): Promise<void> {
   } catch (error) {
     if (error instanceof Error) core.setFailed(error.message)
   }
+}
+
+function resolveProfilerBin(): string | null {
+  const binDir = path.resolve(__dirname, '../../profiler/bin')
+
+  // Try version-specific binary first (e.g. profiler-ubuntu2404)
+  const version = getUbuntuVersion()
+  if (version) {
+    const versionBin = path.join(binDir, `profiler-ubuntu${version}`)
+    if (fs.existsSync(versionBin)) return versionBin
+  }
+
+  // Fallback: generic binary (built on runner, or dev build)
+  const genericBin = path.join(binDir, 'profiler')
+  if (fs.existsSync(genericBin)) return genericBin
+
+  return null
+}
+
+function getUbuntuVersion(): string | null {
+  try {
+    const release = fs.readFileSync('/etc/os-release', 'utf-8')
+    const match = release.match(/VERSION_ID="(\d+)\.(\d+)"/)
+    if (match) return match[1] + match[2] // "24.04" → "2404"
+  } catch {}
+  return null
 }
 
 run()

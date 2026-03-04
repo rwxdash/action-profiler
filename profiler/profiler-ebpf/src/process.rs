@@ -233,7 +233,7 @@ fn try_handle_exit(_ctx: &TracePointContext) -> Result<u32, i64> {
             0
         };
 
-        let raw_exit = // upper 8 bits = status, lower 8 = signal
+        let raw_exit = // kernel format: bits 8-15 = exit status, bits 0-7 = signal
             bpf_probe_read_kernel(addr_of!((*task).exit_code) as *const i32).unwrap_or(0) as u32;
         event.exit_code = raw_exit >> 8;
     }

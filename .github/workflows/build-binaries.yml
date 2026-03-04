@@ -1,0 +1,41 @@
+name: Build Profiler Binaries
+on:
+  workflow_dispatch:
+  push:
+    paths: ["profiler/**"]
+    branches: [master]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            suffix: ubuntu2404
+          - runner: ubuntu-22.04
+            suffix: ubuntu2204
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly + bpf-linker
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly --component rust-src
+          source "$HOME/.cargo/env"
+          cargo install bpf-linker
+
+      - name: Build profiler
+        run: |
+          source "$HOME/.cargo/env"
+          cd profiler && cargo build --release
+
+      - name: Rename binary
+        run: |
+          cp profiler/target/release/profiler profiler-${{ matrix.suffix }}
+          chmod +x profiler-${{ matrix.suffix }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: profiler-${{ matrix.suffix }}
+          path: profiler-${{ matrix.suffix }}
+          retention-days: 30
