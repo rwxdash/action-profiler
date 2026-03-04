@@ -18,11 +18,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust nightly + bpf-linker
+      - name: Install Rust nightly + eBPF tools
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly --component rust-src
           source "$HOME/.cargo/env"
           cargo install bpf-linker
+          cargo install aya-tool
+
+      - name: Generate vmlinux bindings for this kernel
+        run: |
+          source "$HOME/.cargo/env"
+          echo "Kernel: $(uname -r)"
+          aya-tool generate task_struct linux_binprm > profiler/profiler-ebpf/src/vmlinux.rs
 
       - name: Build profiler
         run: |

@@ -8,6 +8,13 @@ OUT_DIR="$BIN_DIR/out"
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR/pkg"
 
+# Generate vmlinux.rs if missing (kernel-specific, not checked into git)
+VMLINUX="$REPO_ROOT/profiler/profiler-ebpf/src/vmlinux.rs"
+if [ ! -f "$VMLINUX" ]; then
+    echo "==> Generating vmlinux.rs for kernel $(uname -r)..."
+    bash "$REPO_ROOT/scripts/generate-vmlinux.sh"
+fi
+
 echo "==> Building WASM viewer..."
 cd "$REPO_ROOT/profiler/profiler-viewer"
 wasm-pack build --target web --release
@@ -17,8 +24,6 @@ cp "$REPO_ROOT/node_modules/echarts/dist/echarts.min.js" "$OUT_DIR/echarts.min.j
 cp "$REPO_ROOT/profiler/tests/index.html" "$OUT_DIR/index.html"
 cp "$REPO_ROOT/profiler/profiler-viewer/pkg/profiler_viewer.js" "$OUT_DIR/pkg/"
 cp "$REPO_ROOT/profiler/profiler-viewer/pkg/profiler_viewer_bg.wasm" "$OUT_DIR/pkg/"
-
-chmod +x "$BIN_DIR/profiler"
 
 echo "==> Done. Output:"
 ls -lh "$OUT_DIR"
