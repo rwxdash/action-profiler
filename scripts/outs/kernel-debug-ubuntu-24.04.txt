@@ -1,0 +1,404 @@
+===== Date & Hostname =====
+Wed Mar  4 15:57:56 UTC 2026
+runnervmnay03
+
+===== Kernel Version =====
+Linux runnervmnay03 6.14.0-1017-azure #17~24.04.1-Ubuntu SMP Mon Dec  1 20:10:50 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
+
+===== OS Release =====
+PRETTY_NAME="Ubuntu 24.04.3 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.3 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+
+===== BTF Available? =====
+-r--r--r-- 1 root root 6.4M Mar  4 15:57 /sys/kernel/btf/vmlinux
+BTF is available
+
+===== Tracefs Mount =====
+tracefs on /sys/kernel/tracing type tracefs (rw,nosuid,nodev,noexec,relatime)
+Tracefs at: /sys/kernel/tracing
+
+===== sched_process_exec format =====
+name: sched_process_exec
+ID: 279
+format:
+	field:unsigned short common_type;	offset:0;	size:2;	signed:0;
+	field:unsigned char common_flags;	offset:2;	size:1;	signed:0;
+	field:unsigned char common_preempt_count;	offset:3;	size:1;	signed:0;
+	field:int common_pid;	offset:4;	size:4;	signed:1;
+
+	field:__data_loc char[] filename;	offset:8;	size:4;	signed:0;
+	field:pid_t pid;	offset:12;	size:4;	signed:1;
+	field:pid_t old_pid;	offset:16;	size:4;	signed:1;
+
+print fmt: "filename=%s pid=%d old_pid=%d", __get_str(filename), REC->pid, REC->old_pid
+
+===== sched_process_exit format =====
+name: sched_process_exit
+ID: 283
+format:
+	field:unsigned short common_type;	offset:0;	size:2;	signed:0;
+	field:unsigned char common_flags;	offset:2;	size:1;	signed:0;
+	field:unsigned char common_preempt_count;	offset:3;	size:1;	signed:0;
+	field:int common_pid;	offset:4;	size:4;	signed:1;
+
+	field:char comm[16];	offset:8;	size:16;	signed:0;
+	field:pid_t pid;	offset:24;	size:4;	signed:1;
+	field:int prio;	offset:28;	size:4;	signed:1;
+
+print fmt: "comm=%s pid=%d prio=%d", REC->comm, REC->pid, REC->prio
+
+===== sched_process_fork format =====
+name: sched_process_fork
+ID: 280
+format:
+	field:unsigned short common_type;	offset:0;	size:2;	signed:0;
+	field:unsigned char common_flags;	offset:2;	size:1;	signed:0;
+	field:unsigned char common_preempt_count;	offset:3;	size:1;	signed:0;
+	field:int common_pid;	offset:4;	size:4;	signed:1;
+
+	field:char parent_comm[16];	offset:8;	size:16;	signed:0;
+	field:pid_t parent_pid;	offset:24;	size:4;	signed:1;
+	field:char child_comm[16];	offset:28;	size:16;	signed:0;
+	field:pid_t child_pid;	offset:44;	size:4;	signed:1;
+
+print fmt: "comm=%s pid=%d child_comm=%s child_pid=%d", REC->parent_comm, REC->parent_pid, REC->child_comm, REC->child_pid
+
+===== syscalls/sys_enter_execve format =====
+name: sys_enter_execve
+ID: 817
+format:
+	field:unsigned short common_type;	offset:0;	size:2;	signed:0;
+	field:unsigned char common_flags;	offset:2;	size:1;	signed:0;
+	field:unsigned char common_preempt_count;	offset:3;	size:1;	signed:0;
+	field:int common_pid;	offset:4;	size:4;	signed:1;
+
+	field:int __syscall_nr;	offset:8;	size:4;	signed:1;
+	field:const char * filename;	offset:16;	size:8;	signed:0;
+	field:const char *const * argv;	offset:24;	size:8;	signed:0;
+	field:const char *const * envp;	offset:32;	size:8;	signed:0;
+
+print fmt: "filename: 0x%08lx, argv: 0x%08lx, envp: 0x%08lx", ((unsigned long)(REC->filename)), ((unsigned long)(REC->argv)), ((unsigned long)(REC->envp))
+
+===== oom/mark_victim format =====
+name: mark_victim
+ID: 567
+format:
+	field:unsigned short common_type;	offset:0;	size:2;	signed:0;
+	field:unsigned char common_flags;	offset:2;	size:1;	signed:0;
+	field:unsigned char common_preempt_count;	offset:3;	size:1;	signed:0;
+	field:int common_pid;	offset:4;	size:4;	signed:1;
+
+	field:int pid;	offset:8;	size:4;	signed:1;
+	field:__data_loc char[] comm;	offset:12;	size:4;	signed:0;
+	field:unsigned long total_vm;	offset:16;	size:8;	signed:0;
+	field:unsigned long anon_rss;	offset:24;	size:8;	signed:0;
+	field:unsigned long file_rss;	offset:32;	size:8;	signed:0;
+	field:unsigned long shmem_rss;	offset:40;	size:8;	signed:0;
+	field:uid_t uid;	offset:48;	size:4;	signed:0;
+	field:unsigned long pgtables;	offset:56;	size:8;	signed:0;
+	field:short oom_score_adj;	offset:64;	size:2;	signed:1;
+
+print fmt: "pid=%d comm=%s total-vm=%lukB anon-rss=%lukB file-rss:%lukB shmem-rss:%lukB uid=%u pgtables=%lukB oom_score_adj=%hd", REC->pid, __get_str(comm), REC->total_vm, REC->anon_rss, REC->file_rss, REC->shmem_rss, REC->uid, REC->pgtables, REC->oom_score_adj
+
+===== block/block_rq_issue format =====
+name: block_rq_issue
+ID: 1312
+format:
+	field:unsigned short common_type;	offset:0;	size:2;	signed:0;
+	field:unsigned char common_flags;	offset:2;	size:1;	signed:0;
+	field:unsigned char common_preempt_count;	offset:3;	size:1;	signed:0;
+	field:int common_pid;	offset:4;	size:4;	signed:1;
+
+	field:dev_t dev;	offset:8;	size:4;	signed:0;
+	field:sector_t sector;	offset:16;	size:8;	signed:0;
+	field:unsigned int nr_sector;	offset:24;	size:4;	signed:0;
+	field:unsigned int bytes;	offset:28;	size:4;	signed:0;
+	field:unsigned short ioprio;	offset:32;	size:2;	signed:0;
+	field:char rwbs[8];	offset:34;	size:8;	signed:0;
+	field:char comm[16];	offset:42;	size:16;	signed:0;
+	field:__data_loc char[] cmd;	offset:60;	size:4;	signed:0;
+
+print fmt: "%d,%d %s %u (%s) %llu + %u %s,%u,%u [%s]", ((unsigned int) ((REC->dev) >> 20)), ((unsigned int) ((REC->dev) & ((1U << 20) - 1))), REC->rwbs, REC->bytes, __get_str(cmd), (unsigned long long)REC->sector, REC->nr_sector, __print_symbolic((((REC->ioprio) >> 13) & (8 - 1)), { IOPRIO_CLASS_NONE, "none" }, { IOPRIO_CLASS_RT, "rt" }, { IOPRIO_CLASS_BE, "be" }, { IOPRIO_CLASS_IDLE, "idle" }, { IOPRIO_CLASS_INVALID, "invalid"}), (((REC->ioprio) >> 3) & ((1 << 10) - 1)), ((REC->ioprio) & ((1 << 3) - 1)), REC->comm
+
+===== block/block_rq_complete format =====
+name: block_rq_complete
+ID: 1315
+format:
+	field:unsigned short common_type;	offset:0;	size:2;	signed:0;
+	field:unsigned char common_flags;	offset:2;	size:1;	signed:0;
+	field:unsigned char common_preempt_count;	offset:3;	size:1;	signed:0;
+	field:int common_pid;	offset:4;	size:4;	signed:1;
+
+	field:dev_t dev;	offset:8;	size:4;	signed:0;
+	field:sector_t sector;	offset:16;	size:8;	signed:0;
+	field:unsigned int nr_sector;	offset:24;	size:4;	signed:0;
+	field:int error;	offset:28;	size:4;	signed:1;
+	field:unsigned short ioprio;	offset:32;	size:2;	signed:0;
+	field:char rwbs[8];	offset:34;	size:8;	signed:0;
+	field:__data_loc char[] cmd;	offset:44;	size:4;	signed:0;
+
+print fmt: "%d,%d %s (%s) %llu + %u %s,%u,%u [%d]", ((unsigned int) ((REC->dev) >> 20)), ((unsigned int) ((REC->dev) & ((1U << 20) - 1))), REC->rwbs, __get_str(cmd), (unsigned long long)REC->sector, REC->nr_sector, __print_symbolic((((REC->ioprio) >> 13) & (8 - 1)), { IOPRIO_CLASS_NONE, "none" }, { IOPRIO_CLASS_RT, "rt" }, { IOPRIO_CLASS_BE, "be" }, { IOPRIO_CLASS_IDLE, "idle" }, { IOPRIO_CLASS_INVALID, "invalid"}), (((REC->ioprio) >> 3) & ((1 << 10) - 1)), ((REC->ioprio) & ((1 << 3) - 1)), REC->error
+
+===== task_struct BTF dump (pahole) =====
+struct task_struct {
+	struct thread_info         thread_info;          /*     0    24 */
+	unsigned int               __state;              /*    24     4 */
+	unsigned int               saved_state;          /*    28     4 */
+	void *                     stack;                /*    32     8 */
+	refcount_t                 usage;                /*    40     4 */
+	unsigned int               flags;                /*    44     4 */
+	unsigned int               ptrace;               /*    48     4 */
+	int                        on_cpu;               /*    52     4 */
+	struct __call_single_node  wake_entry;           /*    56    16 */
+	/* --- cacheline 1 boundary (64 bytes) was 8 bytes ago --- */
+	unsigned int               wakee_flips;          /*    72     4 */
+
+	/* XXX 4 bytes hole, try to pack */
+
+	long unsigned int          wakee_flip_decay_ts;  /*    80     8 */
+	struct task_struct *       last_wakee;           /*    88     8 */
+	int                        recent_used_cpu;      /*    96     4 */
+	int                        wake_cpu;             /*   100     4 */
+	int                        on_rq;                /*   104     4 */
+	int                        prio;                 /*   108     4 */
+	int                        static_prio;          /*   112     4 */
+	int                        normal_prio;          /*   116     4 */
+	unsigned int               rt_priority;          /*   120     4 */
+
+	/* XXX 4 bytes hole, try to pack */
+
+	/* --- cacheline 2 boundary (128 bytes) --- */
+	struct sched_entity        se;                   /*   128   256 */
+	/* --- cacheline 6 boundary (384 bytes) --- */
+	struct sched_rt_entity     rt;                   /*   384    48 */
+	struct sched_dl_entity     dl;                   /*   432   248 */
+	/* --- cacheline 10 boundary (640 bytes) was 40 bytes ago --- */
+	struct sched_dl_entity *   dl_server;            /*   680     8 */
+	struct sched_ext_entity    scx;                  /*   688   208 */
+	/* --- cacheline 14 boundary (896 bytes) --- */
+	const struct sched_class  * sched_class;         /*   896     8 */
+	struct rb_node             core_node;            /*   904    24 */
+	long unsigned int          core_cookie;          /*   928     8 */
+	unsigned int               core_occupation;      /*   936     4 */
+
+	/* XXX 4 bytes hole, try to pack */
+
+	struct task_group *        sched_task_group;     /*   944     8 */
+	struct uclamp_se           uclamp_req[2];        /*   952     8 */
+	/* --- cacheline 15 boundary (960 bytes) --- */
+	struct uclamp_se           uclamp[2];            /*   960     8 */
+
+	/* XXX 56 bytes hole, try to pack */
+
+	/* --- cacheline 16 boundary (1024 bytes) --- */
+	struct sched_statistics    stats __attribute__((__aligned__(64))); /*  1024   256 */
+
+	/* XXX last struct has 24 bytes of padding */
+
+	/* --- cacheline 20 boundary (1280 bytes) --- */
+	struct hlist_head          preempt_notifiers;    /*  1280     8 */
+	unsigned int               btrace_seq;           /*  1288     4 */
+	unsigned int               policy;               /*  1292     4 */
+	long unsigned int          max_allowed_capacity; /*  1296     8 */
+	int                        nr_cpus_allowed;      /*  1304     4 */
+
+	/* XXX 4 bytes hole, try to pack */
+
+	const cpumask_t  *         cpus_ptr;             /*  1312     8 */
+	cpumask_t *                user_cpus_ptr;        /*  1320     8 */
+	cpumask_t                  cpus_mask;            /*  1328  1024 */
+	/* --- cacheline 36 boundary (2304 bytes) was 48 bytes ago --- */
+	void *                     migration_pending;    /*  2352     8 */
+	short unsigned int         migration_disabled;   /*  2360     2 */
+	short unsigned int         migration_flags;      /*  2362     2 */
+	int                        trc_reader_nesting;   /*  2364     4 */
+	/* --- cacheline 37 boundary (2368 bytes) --- */
+	int                        trc_ipi_to_cpu;       /*  2368     4 */
+	union rcu_special          trc_reader_special;   /*  2372     4 */
+	struct list_head           trc_holdout_list;     /*  2376    16 */
+	struct list_head           trc_blkd_node;        /*  2392    16 */
+	int                        trc_blkd_cpu;         /*  2408     4 */
+
+	/* XXX 4 bytes hole, try to pack */
+
+	struct sched_info          sched_info;           /*  2416    48 */
+	/* --- cacheline 38 boundary (2432 bytes) was 32 bytes ago --- */
+	struct list_head           tasks;                /*  2464    16 */
+	struct plist_node          pushable_tasks;       /*  2480    40 */
+	/* --- cacheline 39 boundary (2496 bytes) was 24 bytes ago --- */
+	struct rb_node             pushable_dl_tasks;    /*  2520    24 */
+	struct mm_struct *         mm;                   /*  2544     8 */
+	struct mm_struct *         active_mm;            /*  2552     8 */
+	/* --- cacheline 40 boundary (2560 bytes) --- */
+	struct address_space *     faults_disabled_mapping; /*  2560     8 */
+	int                        exit_state;           /*  2568     4 */
+	int                        exit_code;            /*  2572     4 */
+	int                        exit_signal;          /*  2576     4 */
+	int                        pdeath_signal;        /*  2580     4 */
+	long unsigned int          jobctl;               /*  2584     8 */
+	unsigned int               personality;          /*  2592     4 */
+	unsigned int               sched_reset_on_fork:1; /*  2596: 0  4 */
+	unsigned int               sched_contributes_to_load:1; /*  2596: 1  4 */
+	unsigned int               sched_migrated:1;     /*  2596: 2  4 */
+	unsigned int               sched_task_hot:1;     /*  2596: 3  4 */
+
+	/* XXX 28 bits hole, try to pack */
+
+	/* Force alignment to the next boundary: */
+	unsigned int               :0;
+
+	unsigned int               sched_remote_wakeup:1; /*  2600: 0  4 */
+	unsigned int               sched_rt_mutex:1;     /*  2600: 1  4 */
+	unsigned int               in_execve:1;          /*  2600: 2  4 */
+	unsigned int               in_iowait:1;          /*  2600: 3  4 */
+	unsigned int               restore_sigmask:1;    /*  2600: 4  4 */
+	unsigned int               in_lru_fault:1;       /*  2600: 5  4 */
+	unsigned int               no_cgroup_migration:1; /*  2600: 6  4 */
+	unsigned int               frozen:1;             /*  2600: 7  4 */
+	unsigned int               use_memdelay:1;       /*  2600: 8  4 */
+	unsigned int               in_memstall:1;        /*  2600: 9  4 */
+	unsigned int               in_eventfd:1;         /*  2600:10  4 */
+	unsigned int               pasid_activated:1;    /*  2600:11  4 */
+	unsigned int               reported_split_lock:1; /*  2600:12  4 */
+	unsigned int               in_thrashing:1;       /*  2600:13  4 */
+
+	/* XXX 18 bits hole, try to pack */
+	/* XXX 4 bytes hole, try to pack */
+
+	long unsigned int          atomic_flags;         /*  2608     8 */
+	struct restart_block       restart_block;        /*  2616    56 */
+	/* --- cacheline 41 boundary (2624 bytes) was 48 bytes ago --- */
+	pid_t                      pid;                  /*  2672     4 */
+	pid_t                      tgid;                 /*  2676     4 */
+	long unsigned int          stack_canary;         /*  2680     8 */
+	/* --- cacheline 42 boundary (2688 bytes) --- */
+	struct task_struct *       real_parent;          /*  2688     8 */
+	struct task_struct *       parent;               /*  2696     8 */
+	struct list_head           children;             /*  2704    16 */
+	struct list_head           sibling;              /*  2720    16 */
+	struct task_struct *       group_leader;         /*  2736     8 */
+	struct list_head           ptraced;              /*  2744    16 */
+	/* --- cacheline 43 boundary (2752 bytes) was 8 bytes ago --- */
+	struct list_head           ptrace_entry;         /*  2760    16 */
+	struct pid *               thread_pid;           /*  2776     8 */
+	struct hlist_node          pid_links[4];         /*  2784    64 */
+	/* --- cacheline 44 boundary (2816 bytes) was 32 bytes ago --- */
+	struct list_head           thread_node;          /*  2848    16 */
+	struct completion *        vfork_done;           /*  2864     8 */
+	int *                      set_child_tid;        /*  2872     8 */
+	/* --- cacheline 45 boundary (2880 bytes) --- */
+	int *                      clear_child_tid;      /*  2880     8 */
+	void *                     worker_private;       /*  2888     8 */
+	u64                        utime;                /*  2896     8 */
+	u64                        stime;                /*  2904     8 */
+	u64                        gtime;                /*  2912     8 */
+	struct prev_cputime        prev_cputime;         /*  2920    24 */
+
+	/* XXX last struct has 4 bytes of padding */
+
+	/* --- cacheline 46 boundary (2944 bytes) --- */
+	struct vtime               vtime;                /*  2944    48 */
+	atomic_t                   tick_dep_mask;        /*  2992     4 */
+
+	/* XXX 4 bytes hole, try to pack */
+
+	long unsigned int          nvcsw;                /*  3000     8 */
+	/* --- cacheline 47 boundary (3008 bytes) --- */
+	long unsigned int          nivcsw;               /*  3008     8 */
+	u64                        start_time;           /*  3016     8 */
+	u64                        start_boottime;       /*  3024     8 */
+	long unsigned int          min_flt;              /*  3032     8 */
+	long unsigned int          maj_flt;              /*  3040     8 */
+	struct posix_cputimers     posix_cputimers;      /*  3048    80 */
+	/* --- cacheline 48 boundary (3072 bytes) was 56 bytes ago --- */
+	struct posix_cputimers_work posix_cputimers_work; /*  3128    56 */
+
+	/* XXX last struct has 4 bytes of padding */
+
+	/* --- cacheline 49 boundary (3136 bytes) was 48 bytes ago --- */
+	const struct cred  *       ptracer_cred;         /*  3184     8 */
+	const struct cred  *       real_cred;            /*  3192     8 */
+	/* --- cacheline 50 boundary (3200 bytes) --- */
+	const struct cred  *       cred;                 /*  3200     8 */
+	struct key *               cached_requested_key; /*  3208     8 */
+	char                       comm[16];             /*  3216    16 */
+	struct nameidata *         nameidata;            /*  3232     8 */
+	struct sysv_sem            sysvsem;              /*  3240     8 */
+	struct sysv_shm            sysvshm;              /*  3248    16 */
+	/* --- cacheline 51 boundary (3264 bytes) --- */
+	long unsigned int          last_switch_count;    /*  3264     8 */
+	long unsigned int          last_switch_time;     /*  3272     8 */
+	struct fs_struct *         fs;                   /*  3280     8 */
+	struct files_struct *      files;                /*  3288     8 */
+	struct io_uring_task *     io_uring;             /*  3296     8 */
+	struct nsproxy *           nsproxy;              /*  3304     8 */
+	struct signal_struct *     signal;               /*  3312     8 */
+	struct sighand_struct *    sighand;              /*  3320     8 */
+	/* --- cacheline 52 boundary (3328 bytes) --- */
+	sigset_t                   blocked;              /*  3328     8 */
+	sigset_t                   real_blocked;         /*  3336     8 */
+	sigset_t                   saved_sigmask;        /*  3344     8 */
+	struct sigpending          pending;              /*  3352    24 */
+	long unsigned int          sas_ss_sp;            /*  3376     8 */
+...
+
+-- Specific fields --
+	unsigned int               __state;              /*    24     4 */
+	int                        exit_code;            /*  2572     4 */
+	pid_t                      pid;                  /*  2672     4 */
+	pid_t                      tgid;                 /*  2676     4 */
+	struct task_struct *       real_parent;          /*  2688     8 */
+	struct pid *               thread_pid;           /*  2776     8 */
+	struct hlist_node          pid_links[4];         /*  2784    64 */
+
+===== /proc/version =====
+Linux version 6.14.0-1017-azure (buildd@lcy02-amd64-074) (x86_64-linux-gnu-gcc-13 (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #17~24.04.1-Ubuntu SMP Mon Dec  1 20:10:50 UTC 2025
+
+===== Available BPF helpers =====
+eBPF program_type socket_filter is available
+eBPF program_type kprobe is available
+eBPF program_type sched_cls is available
+eBPF program_type sched_act is available
+eBPF program_type tracepoint is available
+eBPF program_type xdp is available
+eBPF program_type perf_event is available
+eBPF program_type cgroup_skb is available
+eBPF program_type cgroup_sock is available
+eBPF program_type lwt_in is available
+eBPF program_type lwt_out is available
+eBPF program_type lwt_xmit is available
+eBPF program_type sock_ops is available
+eBPF program_type sk_skb is available
+eBPF program_type cgroup_device is available
+eBPF program_type sk_msg is available
+eBPF program_type raw_tracepoint is available
+eBPF program_type cgroup_sock_addr is available
+eBPF program_type lwt_seg6local is available
+eBPF program_type lirc_mode2 is NOT available
+eBPF program_type sk_reuseport is available
+eBPF program_type flow_dissector is available
+eBPF program_type cgroup_sysctl is available
+eBPF program_type raw_tracepoint_writable is available
+eBPF program_type cgroup_sockopt is available
+eBPF program_type tracing is available
+eBPF program_type struct_ops is available
+eBPF program_type ext is available
+eBPF program_type lsm is available
+eBPF program_type sk_lookup is available
+...
+
+===== CAP_BPF check =====
+CAP_BPF available
+
+===== Done =====

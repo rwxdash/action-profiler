@@ -34,7 +34,7 @@ sudo mount -t tracefs tracefs /sys/kernel/tracing 2>/dev/null || true
 
 TRACEFS=""
 for p in /sys/kernel/tracing /sys/kernel/debug/tracing; do
-    if [ -d "$p/events" ]; then
+    if sudo test -d "$p/events" 2>/dev/null; then
         TRACEFS="$p"
         break
     fi

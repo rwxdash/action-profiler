@@ -39,6 +39,7 @@ jobs:
           source "$HOME/.cargo/env"
           echo "Kernel: $(uname -r)"
           aya-tool generate task_struct linux_binprm > profiler/profiler-ebpf/src/vmlinux.rs
+          cp profiler/profiler-ebpf/src/vmlinux.rs vmlinux_${{ matrix.suffix }}.rs
 
       - name: Build profiler
         run: |
@@ -53,5 +54,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: profiler-${{ matrix.suffix }}
-          path: profiler-${{ matrix.suffix }}
+          path: |
+            profiler-${{ matrix.suffix }}
+            vmlinux_${{ matrix.suffix }}.rs
           retention-days: 30
