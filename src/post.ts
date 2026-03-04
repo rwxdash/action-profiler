@@ -87,18 +87,45 @@ export async function run(): Promise<void> {
 function buildArtifact(jsonlPath: string, outputDir: string): void {
   const binOut = path.resolve(__dirname, '../../profiler/bin/out')
 
-  // Copy viewer HTML
-  fs.copyFileSync(path.join(binOut, 'index.html'), path.join(outputDir, 'index.html'))
+  // Read all sources
+  let html = fs.readFileSync(path.join(binOut, 'index.html'), 'utf-8')
+  const jsGlue = fs.readFileSync(
+    path.join(binOut, 'pkg/profiler_viewer.js'),
+    'utf-8'
+  )
+  const wasmBase64 = fs
+    .readFileSync(path.join(binOut, 'pkg/profiler_viewer_bg.wasm'))
+    .toString('base64')
+  const jsonlData = fs.readFileSync(jsonlPath, 'utf-8')
 
-  // Copy WASM viewer files
-  const pkgDst = path.join(outputDir, 'pkg')
-  fs.mkdirSync(pkgDst, { recursive: true })
-  for (const file of ['profiler_viewer.js', 'profiler_viewer_bg.wasm']) {
-    fs.copyFileSync(path.join(binOut, 'pkg', file), path.join(pkgDst, file))
-  }
+  // Strip export keywords from JS glue (inlined into the module script)
+  const jsInline = jsGlue
+    .replace(/^export function /gm, 'function ')
+    .replace(/^export \{[^}]*\};?\s*$/gm, '')
 
-  // Copy JSONL data (HTML auto-fetches 'profiler-events.jsonl' on load)
-  fs.copyFileSync(jsonlPath, path.join(outputDir, 'profiler-events.jsonl'))
+  // Replace the import line with inlined JS glue
+  html = html.replace(
+    "import init, { process_jsonl } from './pkg/profiler_viewer.js';",
+    `// ── Inlined WASM viewer (self-contained) ──\n${jsInline}\n        const init = __wbg_init;`
+  )
+
+  // Replace `await init()` with base64 WASM loading
+  html = html.replace(
+    'await init();',
+    [
+      'const __wasmB64 = "' + wasmBase64 + '";',
+      '        const __wasmBin = Uint8Array.from(atob(__wasmB64), c => c.charCodeAt(0));',
+      '        await init(__wasmBin.buffer);'
+    ].join('\n')
+  )
+
+  // Replace the fetch('profiler-events.jsonl') block with inline JSONL data
+  html = html.replace(
+    /fetch\('profiler-events\.jsonl'\)\s*\n\s*\.then\(r => r\.text\(\)\)\s*\n\s*\.then\(text => \{ if \(text\.trim\(\)\) loadJsonl\(text\); \}\)\s*\n\s*\.catch\(\(\) => \{ \}\);/,
+    `loadJsonl(${JSON.stringify(jsonlData)});`
+  )
+
+  fs.writeFileSync(path.join(outputDir, 'index.html'), html)
 }
 
 function collectFiles(dir: string): string[] {
