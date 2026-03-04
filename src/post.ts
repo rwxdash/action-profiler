@@ -126,6 +126,9 @@ function buildArtifact(jsonlPath: string, outputDir: string): void {
   )
 
   fs.writeFileSync(path.join(outputDir, 'index.html'), html)
+
+  // Include raw JSONL for offline analysis
+  fs.copyFileSync(jsonlPath, path.join(outputDir, 'profiler-events.jsonl'))
 }
 
 function collectFiles(dir: string): string[] {
