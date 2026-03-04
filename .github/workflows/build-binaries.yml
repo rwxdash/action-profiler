@@ -17,13 +17,15 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Install Rust nightly + eBPF tools
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly --component rust-src
           source "$HOME/.cargo/env"
           cargo install bpf-linker
-          cargo install aya-tool
+          cargo install bindgen-cli
+          cargo install --git https://github.com/aya-rs/aya -- aya-tool
 
       - name: Generate vmlinux bindings for this kernel
         run: |
