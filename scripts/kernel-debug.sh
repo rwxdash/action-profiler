@@ -114,7 +114,7 @@ cat /proc/version
 echo ""
 echo "===== Available BPF helpers ====="
 if command -v bpftool &>/dev/null; then
-    sudo bpftool feature probe kernel 2>/dev/null | grep -E '(program_type|map_type|helper)' | head -30
+    sudo bpftool feature probe kernel 2>/dev/null | grep -E '(program_type|map_type|helper)' | head -30 || true
     echo "..."
 else
     echo "(bpftool not installed)"
