@@ -1,24 +1,44 @@
-name: The name of your action here
-description: Provide a description here
-author: Your name or organization here
+name: "Action Profiler"
+description: "Profile GitHub Actions workflows with eBPF — process tracing, system metrics, and interactive reports"
+author: "Oguzhan Ozdemir"
 
-# Add your action's branding here. This will appear on the GitHub Marketplace.
 branding:
-  icon: heart
-  color: red
+  icon: activity
+  color: blue
 
-# Define your inputs here.
 inputs:
-  milliseconds:
-    description: Your input description here
-    required: true
-    default: '1000'
+  github_token:
+    description: "GitHub API token for posting PR comments"
+    default: ${{ github.token }}
+    required: false
+  metric_frequency:
+    description: "System metrics collection interval in seconds (0 to disable)"
+    default: "5"
+    required: false
+  proc_trace_min_duration:
+    description: "Minimum process duration in ms to include in report (-1 = all)"
+    default: "-1"
+    required: false
+  proc_trace_sys_enable:
+    description: "Include default system processes in trace (awk, cat, grep, etc.)"
+    default: "false"
+    required: false
+  comment_on_pr:
+    description: "Post results as a PR comment"
+    default: "true"
+    required: false
+  job_summary:
+    description: "Add results to the GitHub job summary"
+    default: "true"
+    required: false
 
-# Define your outputs here.
 outputs:
-  time:
-    description: Your output description here
+  artifact-id:
+    description: "ID of the uploaded report artifact"
+  artifact-url:
+    description: "URL to download the report artifact"
 
 runs:
   using: node24
-  main: dist/index.js
+  main: dist/main/index.js
+  post: dist/post/index.js
