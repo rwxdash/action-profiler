@@ -64,7 +64,7 @@ export async function run(): Promise<void> {
       ARTIFACT_NAME,
       files,
       artifactDir,
-      { compressionLevel: 6 }
+      { compressionLevel: 6, retentionDays: 3 }
     )
 
     if (id) {
