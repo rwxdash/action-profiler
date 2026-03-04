@@ -20,8 +20,14 @@ if [ "${1:-}" = "--check" ]; then
     fi
 fi
 
+if ! command -v bpftool &>/dev/null; then
+    echo "bpftool not found. Install with: sudo apt install linux-tools-\$(uname -r)"
+    echo "Or download prebuilt from: https://github.com/libbpf/bpftool/releases"
+    exit 1
+fi
+
 if ! command -v aya-tool &>/dev/null; then
-    echo "aya-tool not found. Install with: cargo install aya-tool"
+    echo "aya-tool not found. Install with: cargo install --git https://github.com/aya-rs/aya -- aya-tool"
     exit 1
 fi
 
