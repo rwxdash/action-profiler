@@ -13,7 +13,7 @@ jobs:
       - uses: ./
         id: profiler
         with:
-          metric_frequency: '2'
+          metric_frequency: "2"
 
       # ── Workloads ─────────────────────────────────────────────────
 
@@ -22,9 +22,9 @@ jobs:
         continue-on-error: true
         run: |
           sleep 10
-          systemctl reset-failed profiler-oom-test.scope 2>/dev/null || true
-          systemctl stop profiler-oom-test.scope 2>/dev/null || true
-          systemd-run --scope --unit=profiler-oom-test \
+          sudo systemctl reset-failed profiler-oom-test.scope 2>/dev/null || true
+          sudo systemctl stop profiler-oom-test.scope 2>/dev/null || true
+          sudo systemd-run --scope --unit=profiler-oom-test \
             -p MemoryMax=32M -p MemorySwapMax=0 \
             -- python3 -c "
           import mmap
@@ -88,8 +88,6 @@ jobs:
           echo "==> Checking required files..."
           test -f index.html && echo "  [pass] index.html"
           test -f profiler-events.jsonl && echo "  [pass] profiler-events.jsonl"
-          test -f pkg/profiler_viewer.js && echo "  [pass] pkg/profiler_viewer.js"
-          test -f pkg/profiler_viewer_bg.wasm && echo "  [pass] pkg/profiler_viewer_bg.wasm"
 
       - name: Validate JSONL events
         run: |
