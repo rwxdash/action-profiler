@@ -17,6 +17,7 @@ cd "$REPO_ROOT/profiler/profiler-viewer"
 wasm-pack build --target web --release
 
 echo "==> Copying artifacts..."
+cp "$REPO_ROOT/node_modules/echarts/dist/echarts.min.js" "$OUT_DIR/echarts.min.js"
 cp "$REPO_ROOT/profiler/target/release/profiler" "$BIN_DIR/profiler"
 cp "$REPO_ROOT/profiler/tests/index.html" "$OUT_DIR/index.html"
 cp "$REPO_ROOT/profiler/profiler-viewer/pkg/profiler_viewer.js" "$OUT_DIR/pkg/"

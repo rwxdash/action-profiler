@@ -89,6 +89,10 @@ function buildArtifact(jsonlPath: string, outputDir: string): void {
 
   // Read all sources
   let html = fs.readFileSync(path.join(binOut, 'index.html'), 'utf-8')
+  const echartsJs = fs.readFileSync(
+    path.join(binOut, 'echarts.min.js'),
+    'utf-8'
+  )
   const jsGlue = fs.readFileSync(
     path.join(binOut, 'pkg/profiler_viewer.js'),
     'utf-8'
@@ -97,6 +101,12 @@ function buildArtifact(jsonlPath: string, outputDir: string): void {
     .readFileSync(path.join(binOut, 'pkg/profiler_viewer_bg.wasm'))
     .toString('base64')
   const jsonlData = fs.readFileSync(jsonlPath, 'utf-8')
+
+  // Inline ECharts (replaces CDN script tag to avoid tracking prevention on file://)
+  html = html.replace(
+    /<script src="https:\/\/cdn\.jsdelivr\.net\/npm\/echarts@5\/dist\/echarts\.min\.js"><\/script>/,
+    `<script>\n${echartsJs}\n</script>`
+  )
 
   // Strip export keywords from JS glue (inlined into the module script)
   const jsInline = jsGlue
