@@ -28039,11 +28039,10 @@ async function run() {
             warning('action-profiler requires sudo (for eBPF). Skipping - no sudo access.');
             return;
         }
-        const profilerBin = resolveProfilerBin();
-        if (!profilerBin) {
-            const version = getUbuntuVersion();
-            warning(`No profiler binary found for this runner${version ? ` (Ubuntu ${version})` : ''}. ` +
-                'Skipping profiling. See https://github.com/rwxdash/action-profiler for supported runners.');
+        const profilerBin = path.resolve(__dirname$1, '../../profiler/bin/profiler');
+        if (!fs$1.existsSync(profilerBin)) {
+            warning('No profiler binary found. Run scripts/build.sh to build it. ' +
+                'See https://github.com/rwxdash/action-profiler for details.');
             return;
         }
         fs$1.chmodSync(profilerBin, 0o755);
@@ -28079,31 +28078,6 @@ async function run() {
         if (error instanceof Error)
             setFailed(error.message);
     }
-}
-function resolveProfilerBin() {
-    const binDir = path.resolve(__dirname$1, '../../profiler/bin');
-    // Try version-specific binary first (e.g. profiler-ubuntu2404)
-    const version = getUbuntuVersion();
-    if (version) {
-        const versionBin = path.join(binDir, `profiler-ubuntu${version}`);
-        if (fs$1.existsSync(versionBin))
-            return versionBin;
-    }
-    // Fallback: generic binary (built on runner, or dev build)
-    const genericBin = path.join(binDir, 'profiler');
-    if (fs$1.existsSync(genericBin))
-        return genericBin;
-    return null;
-}
-function getUbuntuVersion() {
-    try {
-        const release = fs$1.readFileSync('/etc/os-release', 'utf-8');
-        const match = release.match(/VERSION_ID="(\d+)\.(\d+)"/);
-        if (match)
-            return match[1] + match[2]; // "24.04" → "2404"
-    }
-    catch { }
-    return null;
 }
 run();
 

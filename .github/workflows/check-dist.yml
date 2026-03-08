@@ -1,13 +1,6 @@
-# In TypeScript actions, `dist/` is a special directory. When you reference
-# an action with the `uses:` property, `dist/index.js` is the code that will be
-# run. For this project, the `dist/index.js` file is transpiled from other
-# source files. This workflow ensures the `dist/` directory contains the
-# expected transpiled code.
-#
-# If this workflow is run from a feature branch, it will act as an additional CI
-# check and fail if the checked-in `dist/` directory does not match what is
-# expected from the build.
-name: Check Transpiled JavaScript
+# Ensures the checked-in dist/, profiler/bin/profiler, and profiler/bin/out/
+# match what would be produced by a clean build from source.
+name: Check Build Outputs
 
 on:
   pull_request:
@@ -22,13 +15,16 @@ permissions:
 
 jobs:
   check-dist:
-    name: Check dist/
+    name: Check dist/ and profiler/bin/
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         id: checkout
         uses: actions/checkout@v6
+        with:
+          submodules: true
+          fetch-depth: 1
 
       - name: Setup Node.js
         id: setup-node
@@ -36,6 +32,16 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install clang and wasm-pack
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq clang
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: Remove dist/ Directory
         id: remove-dist
@@ -45,13 +51,11 @@ jobs:
         id: install
         run: npm ci
 
-      - name: Build dist/ Directory
+      - name: Build
         id: build
         run: npm run bundle
 
-      # This will fail the workflow if the `dist/` directory is different than
-      # expected.
-      - name: Compare Directories
+      - name: Compare Build Outputs
         id: diff
         run: |
           if [ ! -d dist/ ]; then
@@ -59,14 +63,13 @@ jobs:
             ls -la ./
             exit 1
           fi
-          if [ "$(git diff --ignore-space-at-eol --text dist/ | wc -l)" -gt "0" ]; then
+          DIFF="$(git diff --ignore-space-at-eol --text dist/ profiler/bin/ | wc -l)"
+          if [ "$DIFF" -gt "0" ]; then
             echo "Detected uncommitted changes after build. See status below:"
-            git diff --ignore-space-at-eol --text dist/
+            git diff --ignore-space-at-eol --text --stat dist/ profiler/bin/
             exit 1
           fi
 
-      # If `dist/` was different than expected, upload the expected version as a
-      # workflow artifact.
       - if: ${{ failure() && steps.diff.outcome == 'failure' }}
         name: Upload Artifact
         id: upload
