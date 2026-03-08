@@ -113,9 +113,9 @@ int handle_sched_process_exec(struct bpf_raw_tracepoint_args *ctx)
         return 0;
     }
 
-    __u32                 zero = 0;
-    struct process_event *evt  = bpf_map_lookup_elem(&SCRATCH, &zero);
+    struct process_event *evt = bpf_ringbuf_reserve(&EVENTS, sizeof(*evt), 0);
     if (!evt) {
+        bpf_map_delete_elem(&EXEC_ARGS, &pid);
         return 0;
     }
 
@@ -145,11 +145,16 @@ int handle_sched_process_exec(struct bpf_raw_tracepoint_args *ctx)
         for (int i = 0; i < MAX_ARG_COUNT; i++) {
             __builtin_memcpy(evt->args[i], stashed->args[i], MAX_ARG_LEN);
         }
+    } else {
+#pragma unroll
+        for (int i = 0; i < MAX_ARG_COUNT; i++) {
+            evt->args[i][0] = '\0';
+        }
     }
 
     __u64 ts = evt->time_ns;
     bpf_map_update_elem(&EXEC_START, &pid, &ts, BPF_ANY);
-    bpf_ringbuf_output(&EVENTS, evt, sizeof(*evt), 0);
+    bpf_ringbuf_submit(evt, 0);
     bpf_map_delete_elem(&EXEC_ARGS, &pid);
 
     return 0;
@@ -159,40 +164,21 @@ int handle_sched_process_exec(struct bpf_raw_tracepoint_args *ctx)
 // Fork handler - propagate ignored PIDs to children.
 // No event emitted, just bookkeeping.
 //
-// Tracepoint format (full record, including 8-byte common header):
-//   offset 8:  char parent_comm[16]
-//   offset 24: pid_t parent_pid    (4 bytes)
-//   offset 28: char child_comm[16]
-//   offset 44: pid_t child_pid     (4 bytes)
-//
-// We read parent_pid and child_pid from ctx using bpf_probe_read_kernel
-// at fixed offsets. These are tracepoint ABI fields (stable across kernels).
+// Uses raw_tracepoint for CO-RE access to parent/child task_struct,
+// avoiding hardcoded offsets into the tracepoint format record.
 // ------------------------------------------------------------
-// name: sched_process_fork
-// ID: _
-// format:
-//         field:unsigned short common_type;       offset:0;       size:2; signed:0;
-//         field:unsigned char common_flags;       offset:2;       size:1; signed:0;
-//         field:unsigned char common_preempt_count;       offset:3;       size:1; signed:0;
-//         field:int common_pid;   offset:4;       size:4; signed:1;
-//
-//         field:char parent_comm[16];     offset:8;       size:16;        signed:0;
-//         field:pid_t parent_pid; offset:24;      size:4; signed:1;
-//         field:char child_comm[16];      offset:28;      size:16;        signed:0;
-//         field:pid_t child_pid;  offset:44;      size:4; signed:1;
-//
-// print fmt:
-// "comm=%s pid=%d child_comm=%s child_pid=%d",
-// REC->parent_comm, REC->parent_pid, REC->child_comm, REC->child_pid
+// raw_tracepoint args for sched_process_fork (from kernel source):
+//   ctx->args[0] = struct task_struct *parent
+//   ctx->args[1] = struct task_struct *child
 // ============================================================
-SEC("tp/sched/sched_process_fork")
-int handle_sched_process_fork(void *ctx)
+SEC("raw_tracepoint/sched_process_fork")
+int handle_sched_process_fork(struct bpf_raw_tracepoint_args *ctx)
 {
-    __u32 parent_pid;
-    bpf_probe_read_kernel(&parent_pid, sizeof(parent_pid), (void *) ctx + 24);
+    struct task_struct *parent = (struct task_struct *) ctx->args[0];
+    struct task_struct *child  = (struct task_struct *) ctx->args[1];
 
-    __u32 child_pid;
-    bpf_probe_read_kernel(&child_pid, sizeof(child_pid), (void *) ctx + 44);
+    __u32 parent_pid = BPF_CORE_READ(parent, tgid);
+    __u32 child_pid  = BPF_CORE_READ(child, tgid);
 
     if (bpf_map_lookup_elem(&IGNORED_PIDS, &parent_pid)) {
         __u8 ignored = 1;
@@ -238,10 +224,9 @@ int handle_sched_process_exit(void *ctx)
         return 0;
     }
 
-    // Get scratch buffer for the exit event
-    __u32                 zero = 0;
-    struct process_event *evt  = bpf_map_lookup_elem(&SCRATCH, &zero);
+    struct process_event *evt = bpf_ringbuf_reserve(&EVENTS, sizeof(*evt), 0);
     if (!evt) {
+        bpf_map_delete_elem(&EXEC_START, &pid);
         return 0;
     }
 
@@ -275,7 +260,7 @@ int handle_sched_process_exit(void *ctx)
         evt->args[i][0] = '\0';
     }
 
-    bpf_ringbuf_output(&EVENTS, evt, sizeof(*evt), 0);
+    bpf_ringbuf_submit(evt, 0);
     bpf_map_delete_elem(&EXEC_START, &pid);
 
     return 0;
