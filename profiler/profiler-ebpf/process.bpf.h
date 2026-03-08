@@ -53,13 +53,14 @@ int handle_sys_enter_execve(struct trace_event_raw_sys_enter *ctx)
         scratch->args[i][0] = '\0';
     }
 
+    // Skip argv[0] (program name) — it duplicates filename
 #pragma unroll
-    for (int i = 0; i < MAX_ARG_COUNT; i++) {
+    for (int i = 1; i < MAX_ARG_COUNT + 1; i++) {
         const char *arg;
         if (bpf_probe_read_user(&arg, sizeof(arg), &argv[i]) || !arg) {
             break;
         }
-        bpf_probe_read_user_str(scratch->args[i], MAX_ARG_LEN, arg);
+        bpf_probe_read_user_str(scratch->args[i - 1], MAX_ARG_LEN, arg);
     }
 
     bpf_map_update_elem(&EXEC_ARGS, &pid, scratch, BPF_ANY);

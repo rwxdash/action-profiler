@@ -1632,22 +1632,14 @@
             // ── Click handlers ──
             // Label click (left gutter): expand/collapse
             // Bar click: show inspector + focus
-            // Click outside grid: clear selection
             ganttChart.getZr().off('click');
             ganttChart.getZr().on('click', (params) => {
                 try {
                     const pointInPixel = [params.offsetX, params.offsetY];
                     const pointInGrid = ganttChart.convertFromPixel('grid', pointInPixel);
-                    if (!pointInGrid) {
-                        // Clicked outside the grid area — clear focus
-                        if (focusedUids) { closeInspector(); }
-                        return;
-                    }
+                    if (!pointInGrid) return;
                     const rowIdx = Math.round(pointInGrid[1]);
-                    if (rowIdx < 0 || rowIdx >= rows.length) {
-                        if (focusedUids) { closeInspector(); }
-                        return;
-                    }
+                    if (rowIdx < 0 || rowIdx >= rows.length) return;
 
                     const row = rows[rowIdx];
                     const focusMode = document.getElementById('focusOnClick').checked;
@@ -1777,7 +1769,7 @@
                 return `<tr class="${wrapperClass}" style="${dimStyle}">
       <td>${p.display_name}</td><td>${p.pid}</td><td>${p.ppid}</td>
       <td>${p.duration_ms.toFixed(2)}</td><td class="${ec === 'ok' ? 'exit-ok' : ec === 'fail' ? 'exit-fail' : ''}">${exitDisplay}</td>
-      <td>${p.filename}</td><td>${(p.args || []).slice(1).join(' ')}</td></tr>`;
+      <td>${p.filename}</td><td>${(p.args || []).join(' ')}</td></tr>`;
             }).join('');
         }
 
