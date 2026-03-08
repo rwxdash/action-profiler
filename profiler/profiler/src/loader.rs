@@ -40,13 +40,12 @@ pub fn attach_programs(ebpf: &mut Ebpf, args: &crate::Args) -> anyhow::Result<()
     if !args.no_block_io {
         attach_block_io(ebpf)?;
     }
-    // TODO: Uncomment when sched_switch and tcp handlers are implemented
-    // if !args.no_sched_latency {
-    //     attach_sched_latency(ebpf)?;
-    // }
-    // if !args.no_tcp {
-    //     attach_tcp(ebpf)?;
-    // }
+    if !args.no_sched_latency {
+        attach_sched_latency(ebpf)?;
+    }
+    if !args.no_tcp {
+        attach_tcp(ebpf)?;
+    }
 
     Ok(())
 }
@@ -191,41 +190,44 @@ fn attach_block_io(ebpf: &mut Ebpf) -> anyhow::Result<()> {
     Ok(())
 }
 
-// fn attach_sched_latency(ebpf: &mut Ebpf) -> anyhow::Result<()> {
-//     let btf = Btf::from_sys_fs()?;
-//
-//     let wakeup: &mut BtfTracePoint = ebpf
-//         .program_mut("handle_sched_wakeup")
-//         .unwrap()
-//         .try_into()?;
-//     wakeup.load("sched_wakeup", &btf)?;
-//     wakeup.attach()?;
-//
-//     let wakeup_new: &mut BtfTracePoint = ebpf
-//         .program_mut("handle_sched_wakeup_new")
-//         .unwrap()
-//         .try_into()?;
-//     wakeup_new.load("sched_wakeup_new", &btf)?;
-//     wakeup_new.attach()?;
-//
-//     let switch: &mut BtfTracePoint = ebpf
-//         .program_mut("handle_sched_switch")
-//         .unwrap()
-//         .try_into()?;
-//     switch.load("sched_switch", &btf)?;
-//     switch.attach()?;
-//
-//     info!("Scheduler latency tracking attached (tp_btf)");
-//     Ok(())
-// }
+fn attach_sched_latency(ebpf: &mut Ebpf) -> anyhow::Result<()> {
+    let btf = Btf::from_sys_fs()?;
 
-// fn attach_tcp(ebpf: &mut Ebpf) -> anyhow::Result<()> {
-//     let program: &mut TracePoint = ebpf
-//         .program_mut("handle_inet_sock_set_state")
-//         .unwrap()
-//         .try_into()?;
-//     program.load()?;
-//     program.attach("sock", "inet_sock_set_state")?;
-//     info!("TCP connection tracking attached");
-//     Ok(())
-// }
+    let wakeup: &mut BtfTracePoint = ebpf
+        .program_mut("handle_sched_wakeup")
+        .unwrap()
+        .try_into()?;
+    wakeup.load("sched_wakeup", &btf)?;
+    wakeup.attach()?;
+
+    let wakeup_new: &mut BtfTracePoint = ebpf
+        .program_mut("handle_sched_wakeup_new")
+        .unwrap()
+        .try_into()?;
+    wakeup_new.load("sched_wakeup_new", &btf)?;
+    wakeup_new.attach()?;
+
+    let switch_prog: &mut BtfTracePoint = ebpf
+        .program_mut("handle_sched_switch")
+        .unwrap()
+        .try_into()?;
+    switch_prog.load("sched_switch", &btf)?;
+    switch_prog.attach()?;
+
+    info!("Scheduler latency tracking attached (tp_btf)");
+    Ok(())
+}
+
+fn attach_tcp(ebpf: &mut Ebpf) -> anyhow::Result<()> {
+    let btf = Btf::from_sys_fs()?;
+
+    let program: &mut BtfTracePoint = ebpf
+        .program_mut("handle_inet_sock_set_state")
+        .unwrap()
+        .try_into()?;
+    program.load("inet_sock_set_state", &btf)?;
+    program.attach()?;
+
+    info!("TCP connection tracking attached (tp_btf)");
+    Ok(())
+}
