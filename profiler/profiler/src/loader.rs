@@ -1,11 +1,26 @@
 use aya::{
-    Ebpf,
+    Btf, Ebpf,
     maps::{Array, HashMap},
-    programs::{RawTracePoint, TracePoint},
+    programs::{BtfTracePoint, KProbe, RawTracePoint, TracePoint},
 };
 use tracing::{info, warn};
 
 use crate::utils::{name_to_bytes, scan_ignored_pids};
+
+/// Parse kernel version (major, minor) from uname release string.
+fn kernel_version() -> Option<(u32, u32)> {
+    let mut utsname: libc::utsname = unsafe { std::mem::zeroed() };
+    if unsafe { libc::uname(&mut utsname) } != 0 {
+        return None;
+    }
+    let release = unsafe { std::ffi::CStr::from_ptr(utsname.release.as_ptr()) }
+        .to_str()
+        .ok()?;
+    let mut parts = release.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    Some((major, minor))
+}
 
 // "sh" excluded: `sh -c "real command"` would hide the child via fork inheritance
 const DEFAULT_IGNORE: &[&str] = &[
@@ -19,15 +34,18 @@ pub fn attach_programs(ebpf: &mut Ebpf, args: &crate::Args) -> anyhow::Result<()
     setup_ignore_lists(ebpf, args)?;
     attach_process_tracing(ebpf)?;
 
-    // TODO: uncomment when C BPF handlers are implemented
-    // if !args.no_oom {
-    //     attach_oom(ebpf)?;
-    // }
-    // if !args.no_block_io {
-    //     attach_block_io(ebpf)?;
-    // }
+    if !args.no_oom {
+        attach_oom(ebpf)?;
+    }
+    if !args.no_block_io {
+        attach_block_io(ebpf)?;
+    }
+    // TODO: Uncomment when sched_switch and tcp handlers are implemented
     // if !args.no_sched_latency {
     //     attach_sched_latency(ebpf)?;
+    // }
+    // if !args.no_tcp {
+    //     attach_tcp(ebpf)?;
     // }
 
     Ok(())
@@ -115,12 +133,12 @@ fn attach_process_tracing(ebpf: &mut Ebpf) -> anyhow::Result<()> {
     program_exec.load()?;
     program_exec.attach("sched_process_exec")?;
 
-    let program_fork: &mut TracePoint = ebpf
+    let program_fork: &mut RawTracePoint = ebpf
         .program_mut("handle_sched_process_fork")
         .unwrap()
         .try_into()?;
     program_fork.load()?;
-    program_fork.attach("sched", "sched_process_fork")?;
+    program_fork.attach("sched_process_fork")?;
 
     let program_exit: &mut TracePoint = ebpf
         .program_mut("handle_sched_process_exit")
@@ -133,58 +151,81 @@ fn attach_process_tracing(ebpf: &mut Ebpf) -> anyhow::Result<()> {
     Ok(())
 }
 
-// TODO: uncomment when C BPF handlers are implemented (oom.bpf.h)
-// fn attach_oom(ebpf: &mut Ebpf) -> anyhow::Result<()> {
-//     let program: &mut TracePoint = ebpf.program_mut("handle_oom_kill").unwrap().try_into()?;
-//     program.load()?;
-//     program.attach("oom", "mark_victim")?;
-//     info!("OOM kill detection attached");
-//     Ok(())
-// }
+fn attach_oom(ebpf: &mut Ebpf) -> anyhow::Result<()> {
+    let program: &mut KProbe = ebpf.program_mut("handle_oom_kill").unwrap().try_into()?;
+    program.load()?;
+    program.attach("mark_oom_victim", 0)?;
+    info!("OOM kill detection attached (kprobe)");
+    Ok(())
+}
 
-// TODO: uncomment when C BPF handlers are implemented (block_io.bpf.h)
-// fn attach_block_io(ebpf: &mut Ebpf) -> anyhow::Result<()> {
-//     let issue: &mut TracePoint = ebpf
-//         .program_mut("handle_block_rq_issue")
-//         .unwrap()
-//         .try_into()?;
-//     issue.load()?;
-//     issue.attach("block", "block_rq_issue")?;
-//
-//     let complete: &mut TracePoint = ebpf
-//         .program_mut("handle_block_rq_complete")
-//         .unwrap()
-//         .try_into()?;
-//     complete.load()?;
-//     complete.attach("block", "block_rq_complete")?;
-//
-//     info!("Block I/O latency tracking attached");
-//     Ok(())
-// }
+fn attach_block_io(ebpf: &mut Ebpf) -> anyhow::Result<()> {
+    // tp_btf/block_rq_* uses rq->q->disk which requires kernel >= 5.11
+    if let Some((major, minor)) = kernel_version()
+        && (major, minor) < (5, 11)
+    {
+        warn!(
+            "Block I/O tracking requires kernel >= 5.11 (found {}.{}), skipping",
+            major, minor
+        );
+        return Ok(());
+    }
 
-// TODO: uncomment when C BPF handlers are implemented (sched.bpf.h)
+    let btf = Btf::from_sys_fs()?;
+
+    let issue: &mut BtfTracePoint = ebpf
+        .program_mut("handle_block_rq_issue")
+        .unwrap()
+        .try_into()?;
+    issue.load("block_rq_issue", &btf)?;
+    issue.attach()?;
+
+    let complete: &mut BtfTracePoint = ebpf
+        .program_mut("handle_block_rq_complete")
+        .unwrap()
+        .try_into()?;
+    complete.load("block_rq_complete", &btf)?;
+    complete.attach()?;
+
+    info!("Block I/O latency tracking attached (tp_btf)");
+    Ok(())
+}
+
 // fn attach_sched_latency(ebpf: &mut Ebpf) -> anyhow::Result<()> {
-//     let wakeup: &mut TracePoint = ebpf
+//     let btf = Btf::from_sys_fs()?;
+//
+//     let wakeup: &mut BtfTracePoint = ebpf
 //         .program_mut("handle_sched_wakeup")
 //         .unwrap()
 //         .try_into()?;
-//     wakeup.load()?;
-//     wakeup.attach("sched", "sched_wakeup")?;
+//     wakeup.load("sched_wakeup", &btf)?;
+//     wakeup.attach()?;
 //
-//     let wakeup_new: &mut TracePoint = ebpf
+//     let wakeup_new: &mut BtfTracePoint = ebpf
 //         .program_mut("handle_sched_wakeup_new")
 //         .unwrap()
 //         .try_into()?;
-//     wakeup_new.load()?;
-//     wakeup_new.attach("sched", "sched_wakeup_new")?;
+//     wakeup_new.load("sched_wakeup_new", &btf)?;
+//     wakeup_new.attach()?;
 //
-//     let switch: &mut TracePoint = ebpf
+//     let switch: &mut BtfTracePoint = ebpf
 //         .program_mut("handle_sched_switch")
 //         .unwrap()
 //         .try_into()?;
-//     switch.load()?;
-//     switch.attach("sched", "sched_switch")?;
+//     switch.load("sched_switch", &btf)?;
+//     switch.attach()?;
 //
-//     info!("Scheduler latency tracking attached");
+//     info!("Scheduler latency tracking attached (tp_btf)");
+//     Ok(())
+// }
+
+// fn attach_tcp(ebpf: &mut Ebpf) -> anyhow::Result<()> {
+//     let program: &mut TracePoint = ebpf
+//         .program_mut("handle_inet_sock_set_state")
+//         .unwrap()
+//         .try_into()?;
+//     program.load()?;
+//     program.attach("sock", "inet_sock_set_state")?;
+//     info!("TCP connection tracking attached");
 //     Ok(())
 // }

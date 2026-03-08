@@ -18,7 +18,9 @@ use tokio::{io::unix::AsyncFd, signal, time};
 use tracing::{info, warn};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::event::{BlockIoRecord, OomKillRecord, ProcessEventRecord, SchedLatencyRecord};
+use crate::event::{
+    BlockIoRecord, OomKillRecord, ProcessEventRecord, SchedLatencyRecord, TcpRecord,
+};
 
 #[derive(Parser)]
 #[command(name = "profiler", about = "eBPF process event tracer")]
@@ -62,6 +64,10 @@ pub struct Args {
     /// Minimum block I/O latency to report in milliseconds (default: 1ms)
     #[arg(long, default_value = "1", env = "PROFILER_BLOCK_IO_THRESHOLD_MS")]
     pub block_io_threshold_ms: u64,
+
+    /// Disable TCP connection tracking
+    #[arg(long, env = "PROFILER_NO_TCP")]
+    pub no_tcp: bool,
 }
 
 #[tokio::main]
@@ -211,6 +217,9 @@ fn dispatch_event(item: &[u8], writer: &mut BufWriter<Box<dyn Write>>) {
             .and_then(|e| serde_json::to_string(&BlockIoRecord::from(&e)).ok()),
         EVENT_SCHED_LATENCY => parse_event!(SchedLatencyEvent)
             .and_then(|e| serde_json::to_string(&SchedLatencyRecord::from(&e)).ok()),
+        EVENT_TCP => {
+            parse_event!(TcpEvent).and_then(|e| serde_json::to_string(&TcpRecord::from(&e)).ok())
+        }
         _ => {
             warn!(
                 "Unknown event type: {} (len={})",

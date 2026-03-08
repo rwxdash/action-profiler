@@ -49,7 +49,11 @@ fn main() {
         bpf_arch,
         bpf_src.canonicalize().unwrap().display(),
         libbpf_src.canonicalize().unwrap().display(),
-        bpf_src.join("profiler.bpf.c").canonicalize().unwrap().display(),
+        bpf_src
+            .join("profiler.bpf.c")
+            .canonicalize()
+            .unwrap()
+            .display(),
     );
     let cc_path = workspace_root.join("compile_commands.json");
     let _ = fs::write(&cc_path, compile_commands);

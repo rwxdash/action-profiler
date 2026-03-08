@@ -1,6 +1,12 @@
-use std::path::Path;
+use std::{
+    net::{Ipv4Addr, Ipv6Addr},
+    path::Path,
+};
 
-use profiler_common::{BlockIoEvent, OomKillEvent, ProcessEvent, SchedLatencyEvent};
+use profiler_common::{
+    BlockIoEvent, OomKillEvent, ProcessEvent, SchedLatencyEvent, TCP_TYPE_ACCEPT, TCP_TYPE_CONNECT,
+    TcpEvent,
+};
 use serde::Serialize;
 
 use crate::utils::bytes_to_string;
@@ -121,6 +127,7 @@ pub struct OomKillRecord {
     pub pgtables_kb: u64,
     pub oom_score_adj: i16,
     pub victim_name: String,
+    pub oncpu_name: String,
 }
 
 impl From<&OomKillEvent> for OomKillRecord {
@@ -137,6 +144,7 @@ impl From<&OomKillEvent> for OomKillRecord {
             pgtables_kb: e.pgtables_kb,
             oom_score_adj: e.oom_score_adj,
             victim_name: bytes_to_string(&e.victim_name),
+            oncpu_name: bytes_to_string(&e.oncpu_name),
         }
     }
 }
@@ -149,7 +157,7 @@ pub struct BlockIoRecord {
     pub sector: u64,
     pub nr_sectors: u32,
     pub latency_ns: u64,
-    pub rwbs: String,
+    pub operation: String,
     pub pid: u32,
     pub name: String,
 }
@@ -163,7 +171,14 @@ impl From<&BlockIoEvent> for BlockIoRecord {
             sector: e.sector,
             nr_sectors: e.nr_sectors,
             latency_ns: e.latency_ns,
-            rwbs: bytes_to_string(&e.rwbs),
+            operation: match e.cmd_flags & 0xFF {
+                0 => "read",
+                1 => "write",
+                2 => "flush",
+                3 => "discard",
+                _ => "other",
+            }
+            .to_string(),
             pid: e.pid,
             name: bytes_to_string(&e.name),
         }
@@ -190,6 +205,55 @@ impl From<&SchedLatencyEvent> for SchedLatencyRecord {
             latency_ns: e.latency_ns,
             prio: e.prio,
             target_cpu: e.target_cpu,
+            name: bytes_to_string(&e.name),
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct TcpRecord {
+    pub time_ns: u64,
+    pub event_type: &'static str,
+    pub tcp_type: &'static str,
+    pub pid: u32,
+    pub saddr: String,
+    pub daddr: String,
+    pub sport: u16,
+    pub dport: u16,
+    pub duration_ns: u64,
+    pub name: String,
+}
+
+impl From<&TcpEvent> for TcpRecord {
+    fn from(e: &TcpEvent) -> Self {
+        let (saddr, daddr) = if e.family == 2 {
+            // AF_INET: IPv4 in network byte order
+            (
+                Ipv4Addr::from(e.saddr_v4.to_be()).to_string(),
+                Ipv4Addr::from(e.daddr_v4.to_be()).to_string(),
+            )
+        } else {
+            // AF_INET6
+            (
+                Ipv6Addr::from(e.saddr_v6).to_string(),
+                Ipv6Addr::from(e.daddr_v6).to_string(),
+            )
+        };
+
+        Self {
+            time_ns: e.time_ns,
+            event_type: "tcp",
+            tcp_type: match e.tcp_type {
+                TCP_TYPE_CONNECT => "connect",
+                TCP_TYPE_ACCEPT => "accept",
+                _ => "close",
+            },
+            pid: e.pid,
+            saddr,
+            daddr,
+            sport: e.sport,
+            dport: e.dport,
+            duration_ns: e.duration_ns,
             name: bytes_to_string(&e.name),
         }
     }

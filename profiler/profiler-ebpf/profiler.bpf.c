@@ -11,5 +11,9 @@
 
 #include "profiler.bpf.h"
 #include "process.bpf.h"
+#include "block_io.bpf.h"
+#include "oom.bpf.h"
+// #include "sched.bpf.h"
+// #include "tcp.bpf.h"
 
 char LICENSE[] SEC("license") = "Dual MIT/GPL";
