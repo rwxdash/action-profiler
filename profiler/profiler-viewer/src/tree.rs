@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::types::*;
 
@@ -6,6 +6,7 @@ pub fn build_process_tree(
     processes: &[ProcessOut],
     block_io_events: &[BlockIoEventRaw],
     sched_events: &[SchedLatencyEventRaw],
+    tcp_events: &[TcpEventRaw],
 ) -> Vec<ProcessTreeNode> {
     let mut sched_by_pid: HashMap<u32, Vec<f64>> = HashMap::new();
     for e in sched_events {
@@ -19,40 +20,102 @@ pub fn build_process_tree(
     let mut bio_write_by_pid: HashMap<u32, Vec<f64>> = HashMap::new();
     for e in block_io_events {
         let ms = e.latency_ns as f64 / 1e6;
-        if e.rwbs.starts_with('R') {
+        if e.operation == "read" {
             bio_read_by_pid.entry(e.pid).or_default().push(ms);
         } else {
             bio_write_by_pid.entry(e.pid).or_default().push(ms);
         }
     }
 
-    let pid_set: std::collections::HashSet<u32> = processes.iter().map(|p| p.pid).collect();
-    let mut children_map: HashMap<u32, Vec<usize>> = HashMap::new();
-    for (i, p) in processes.iter().enumerate() {
-        children_map.entry(p.ppid).or_default().push(i);
+    // TCP: count connects and closes per PID, collect connect latencies
+    let mut tcp_connect_latencies: HashMap<u32, Vec<f64>> = HashMap::new();
+    let mut tcp_connect_count: HashMap<u32, u64> = HashMap::new();
+    let mut tcp_close_count: HashMap<u32, u64> = HashMap::new();
+    for e in tcp_events {
+        match e.tcp_type {
+            TcpType::Connect | TcpType::Accept => {
+                *tcp_connect_count.entry(e.pid).or_default() += 1;
+                tcp_connect_latencies
+                    .entry(e.pid)
+                    .or_default()
+                    .push(e.duration_ns as f64 / 1e6);
+            }
+            TcpType::Close => {
+                *tcp_close_count.entry(e.pid).or_default() += 1;
+            }
+        }
     }
 
-    let roots: Vec<usize> = processes
-        .iter()
-        .enumerate()
-        .filter(|(_, p)| !pid_set.contains(&p.ppid))
-        .map(|(i, _)| i)
+    // Map pid -> [(start_s, end_s, process_index)], sorted by start_s.
+    // Used to disambiguate PID reuse when matching children to parents.
+    let mut pid_instances: HashMap<u32, Vec<(f64, f64, usize)>> = HashMap::new();
+    for (i, p) in processes.iter().enumerate() {
+        let end = p.end_s.unwrap_or(f64::INFINITY);
+        pid_instances
+            .entry(p.pid)
+            .or_default()
+            .push((p.start_s, end, i));
+    }
+    for instances in pid_instances.values_mut() {
+        instances.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    }
+
+    // Key children_map by process index (not PID) to handle PID reuse
+    let mut children_map: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (i, p) in processes.iter().enumerate() {
+        if let Some(parent_instances) = pid_instances.get(&p.ppid) {
+            // Find parent instance alive at child's start: latest start <= child.start_s <= end
+            let parent_idx = parent_instances
+                .iter()
+                .rev()
+                .find(|(start, end, _)| *start <= p.start_s && p.start_s <= *end)
+                .or_else(|| {
+                    // Fallback: latest instance that started before child
+                    parent_instances
+                        .iter()
+                        .rev()
+                        .find(|(start, _, _)| *start <= p.start_s)
+                })
+                .map(|(_, _, idx)| *idx);
+            if let Some(pi) = parent_idx {
+                children_map.entry(pi).or_default().push(i);
+            }
+        }
+    }
+
+    let claimed: HashSet<usize> = children_map
+        .values()
+        .flat_map(|v| v.iter().copied())
+        .collect();
+    let roots: Vec<usize> = (0..processes.len())
+        .filter(|i| !claimed.contains(i))
         .collect();
 
     fn build_node(
         idx: usize,
         processes: &[ProcessOut],
-        children_map: &HashMap<u32, Vec<usize>>,
+        children_map: &HashMap<usize, Vec<usize>>,
         sched_by_pid: &HashMap<u32, Vec<f64>>,
         bio_read_by_pid: &HashMap<u32, Vec<f64>>,
         bio_write_by_pid: &HashMap<u32, Vec<f64>>,
+        tcp_connect_latencies: &HashMap<u32, Vec<f64>>,
+        tcp_connect_count: &HashMap<u32, u64>,
+        tcp_close_count: &HashMap<u32, u64>,
     ) -> ProcessTreeNode {
         let p = &processes[idx];
 
-        let ebpf = compute_process_ebpf(p.pid, sched_by_pid, bio_read_by_pid, bio_write_by_pid);
+        let ebpf = compute_process_ebpf(
+            p.pid,
+            sched_by_pid,
+            bio_read_by_pid,
+            bio_write_by_pid,
+            tcp_connect_latencies,
+            tcp_connect_count,
+            tcp_close_count,
+        );
 
         let mut child_nodes: Vec<ProcessTreeNode> = children_map
-            .get(&p.pid)
+            .get(&idx)
             .map(|indices| {
                 indices
                     .iter()
@@ -64,6 +127,9 @@ pub fn build_process_tree(
                             sched_by_pid,
                             bio_read_by_pid,
                             bio_write_by_pid,
+                            tcp_connect_latencies,
+                            tcp_connect_count,
+                            tcp_close_count,
                         )
                     })
                     .collect()
@@ -122,6 +188,9 @@ pub fn build_process_tree(
                 &sched_by_pid,
                 &bio_read_by_pid,
                 &bio_write_by_pid,
+                &tcp_connect_latencies,
+                &tcp_connect_count,
+                &tcp_close_count,
             )
         })
         .collect();
@@ -143,6 +212,9 @@ fn compute_process_ebpf(
     sched_by_pid: &HashMap<u32, Vec<f64>>,
     bio_read_by_pid: &HashMap<u32, Vec<f64>>,
     bio_write_by_pid: &HashMap<u32, Vec<f64>>,
+    tcp_connect_latencies: &HashMap<u32, Vec<f64>>,
+    tcp_connect_count: &HashMap<u32, u64>,
+    tcp_close_count: &HashMap<u32, u64>,
 ) -> ProcessEbpfStats {
     let mut stats = ProcessEbpfStats::default();
 
@@ -182,6 +254,21 @@ fn compute_process_ebpf(
         }
     }
 
+    if let Some(latencies) = tcp_connect_latencies.get(&pid) {
+        if !latencies.is_empty() {
+            let n = latencies.len();
+            let sum: f64 = latencies.iter().sum();
+            let max = latencies.iter().cloned().fold(0.0f64, f64::max);
+            stats.tcp_connect_count = n as u64;
+            stats.tcp_connect_avg_ms = sum / n as f64;
+            stats.tcp_connect_max_ms = max;
+        }
+    }
+
+    let connects = tcp_connect_count.get(&pid).copied().unwrap_or(0);
+    let closes = tcp_close_count.get(&pid).copied().unwrap_or(0);
+    stats.tcp_active_connections = connects.saturating_sub(closes);
+
     stats
 }
 
@@ -190,13 +277,16 @@ fn mark_critical_path(node: &mut ProcessTreeNode) {
     if node.children.is_empty() {
         return;
     }
+    // Critical path = child whose span ends latest (determines parent's span)
     let longest_idx = node
         .children
         .iter()
         .enumerate()
         .max_by(|(_, a), (_, b)| {
-            a.duration_ms
-                .partial_cmp(&b.duration_ms)
+            let end_a = a.start_s + (a.span_ms / 1000.0);
+            let end_b = b.start_s + (b.span_ms / 1000.0);
+            end_a
+                .partial_cmp(&end_b)
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
         .map(|(i, _)| i);

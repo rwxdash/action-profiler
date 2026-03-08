@@ -68,6 +68,10 @@ pub struct Args {
     /// Disable TCP connection tracking
     #[arg(long, env = "PROFILER_NO_TCP")]
     pub no_tcp: bool,
+
+    /// Disable source IP redaction in TCP events (exposes runner IP)
+    #[arg(long, env = "PROFILER_NO_REDACT_SOURCE_IP")]
+    pub no_redact_source_ip: bool,
 }
 
 #[tokio::main]
@@ -119,6 +123,8 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
+    let redact_saddr = !args.no_redact_source_ip;
+
     info!("Profiler running. Press Ctrl-C to stop.");
 
     loop {
@@ -127,7 +133,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut guard = ready?;
                 let rb = guard.get_inner_mut();
                 while let Some(item) = rb.next() {
-                    dispatch_event(&item, &mut writer);
+                    dispatch_event(&item, &mut writer, redact_saddr);
                 }
                 let _ = writer.flush();
                 guard.clear_ready();
@@ -136,7 +142,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut guard = ready?;
                 let rb = guard.get_inner_mut();
                 while let Some(item) = rb.next() {
-                    dispatch_event(&item, &mut writer);
+                    dispatch_event(&item, &mut writer, redact_saddr);
                 }
                 let _ = writer.flush();
                 guard.clear_ready();
@@ -164,18 +170,18 @@ async fn main() -> anyhow::Result<()> {
 
     let mut ring_buf = async_fd.into_inner();
     while let Some(item) = ring_buf.next() {
-        dispatch_event(&item, &mut writer);
+        dispatch_event(&item, &mut writer, redact_saddr);
     }
     let mut oom_ring_buf = oom_async_fd.into_inner();
     while let Some(item) = oom_ring_buf.next() {
-        dispatch_event(&item, &mut writer);
+        dispatch_event(&item, &mut writer, redact_saddr);
     }
     writer.flush()?;
 
     Ok(())
 }
 
-fn dispatch_event(item: &[u8], writer: &mut BufWriter<Box<dyn Write>>) {
+fn dispatch_event(item: &[u8], writer: &mut BufWriter<Box<dyn Write>>, redact_saddr: bool) {
     if item.len() < size_of::<EventHeader>() {
         warn!(
             "Dropped malformed event (too small for header: {} bytes)",
@@ -217,9 +223,8 @@ fn dispatch_event(item: &[u8], writer: &mut BufWriter<Box<dyn Write>>) {
             .and_then(|e| serde_json::to_string(&BlockIoRecord::from(&e)).ok()),
         EVENT_SCHED_LATENCY => parse_event!(SchedLatencyEvent)
             .and_then(|e| serde_json::to_string(&SchedLatencyRecord::from(&e)).ok()),
-        EVENT_TCP => {
-            parse_event!(TcpEvent).and_then(|e| serde_json::to_string(&TcpRecord::from(&e)).ok())
-        }
+        EVENT_TCP => parse_event!(TcpEvent)
+            .and_then(|e| serde_json::to_string(&TcpRecord::new(&e, redact_saddr)).ok()),
         _ => {
             warn!(
                 "Unknown event type: {} (len={})",

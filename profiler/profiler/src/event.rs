@@ -224,8 +224,8 @@ pub struct TcpRecord {
     pub name: String,
 }
 
-impl From<&TcpEvent> for TcpRecord {
-    fn from(e: &TcpEvent) -> Self {
+impl TcpRecord {
+    pub fn new(e: &TcpEvent, redact_saddr: bool) -> Self {
         let (saddr, daddr) = if e.family == 2 {
             // AF_INET: IPv4 in network byte order
             (
@@ -249,7 +249,11 @@ impl From<&TcpEvent> for TcpRecord {
                 _ => "close",
             },
             pid: e.pid,
-            saddr,
+            saddr: if redact_saddr {
+                "*.*.*.*".to_string()
+            } else {
+                saddr
+            },
             daddr,
             sport: e.sport,
             dport: e.dport,

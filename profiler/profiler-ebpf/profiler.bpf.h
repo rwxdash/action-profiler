@@ -8,7 +8,6 @@
 #include "bpf_tracing.h"
 
 // Constants
-
 #define MAX_PROC_NAME_LEN            16
 #define MAX_FILENAME_LEN             256
 #define MAX_ARG_LEN                  128
