@@ -1,9 +1,6 @@
 name: Kernel Debug Info
 on:
   workflow_dispatch:
-  push:
-    branches: [impl/**]
-    paths: [".github/workflows/kernel-debug.yml", "scripts/kernel-debug.sh"]
 
 jobs:
   debug:

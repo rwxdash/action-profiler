@@ -1,9 +1,8 @@
 name: Test Profiler Action
 on:
   workflow_dispatch:
-  push:
-    branches: [impl/**]
   pull_request:
+    branches: [master]
 
 jobs:
   profile:
