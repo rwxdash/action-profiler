@@ -1,5 +1,6 @@
-# Ensures the checked-in dist/, profiler/bin/profiler, and profiler/bin/out/
-# match what would be produced by a clean build from source.
+# Verifies that:
+# 1. Profiler binary and WASM viewer compile successfully
+# 2. Checked-in dist/ and viewer assets match what would be built from source
 name: Check Build Outputs
 
 on:
@@ -15,19 +16,17 @@ permissions:
 
 jobs:
   check-dist:
-    name: Check dist/ and profiler/bin/
+    name: Check build outputs
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        id: checkout
         uses: actions/checkout@v6
         with:
           submodules: true
           fetch-depth: 1
 
       - name: Setup Node.js
-        id: setup-node
         uses: actions/setup-node@v6
         with:
           node-version-file: .node-version
@@ -43,36 +42,35 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq clang
           curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Remove dist/ Directory
-        id: remove-dist
+      - name: Remove dist/
         run: npx rimraf ./dist
 
       - name: Install Dependencies
-        id: install
         run: npm ci
 
       - name: Build
-        id: build
-        run: npm run bundle
+        run: npm run package
 
-      - name: Compare Build Outputs
+      # Diff only deterministic outputs: transpiled JS, copied HTML/echarts/JS glue.
+      # Compiled artifacts (binary, WASM) aren't reproducible — the build step
+      # above already verifies they compile. A separate release workflow commits them.
+      - name: Compare Deterministic Outputs
         id: diff
         run: |
           if [ ! -d dist/ ]; then
-            echo "Expected dist/ directory does not exist.  See status below:"
+            echo "Expected dist/ directory does not exist."
             ls -la ./
             exit 1
           fi
-          DIFF="$(git diff --ignore-space-at-eol --text dist/ profiler/bin/ | wc -l)"
+          DIFF="$(git diff --ignore-space-at-eol --text dist/ profiler/bin/out/index.html profiler/bin/out/echarts.min.js profiler/bin/out/pkg/profiler_viewer.js | wc -l)"
           if [ "$DIFF" -gt "0" ]; then
             echo "Detected uncommitted changes after build. See status below:"
-            git diff --ignore-space-at-eol --text --stat dist/ profiler/bin/
+            git diff --ignore-space-at-eol --text --stat dist/ profiler/bin/out/index.html profiler/bin/out/echarts.min.js profiler/bin/out/pkg/profiler_viewer.js
             exit 1
           fi
 
       - if: ${{ failure() && steps.diff.outcome == 'failure' }}
         name: Upload Artifact
-        id: upload
         uses: actions/upload-artifact@v5
         with:
           name: dist
