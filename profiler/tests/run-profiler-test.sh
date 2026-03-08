@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Integration test — exercises all event types.
+# Integration test - exercises all event types.
 # Usage: sudo ./tests/run-profiler-test.sh
 set -euo pipefail
 
@@ -129,7 +129,7 @@ except (MemoryError, Exception):
     log "OOM test process exited (expected)"
 ) &
 CHILD_PIDS+=($!)
-# Don't wait — let it run async
+# Don't wait - let it run async
 
 # ─── Test 2: Block I/O ──────────────────────────────────────────────────────
 #
@@ -140,7 +140,7 @@ log "Test 2: Generating block I/O (direct writes + sync reads)..."
 (
     TESTFILE="/tmp/profiler-test-blockio-$$"
 
-    # Direct write — bypasses page cache, hits disk
+    # Direct write - bypasses page cache, hits disk
     dd if=/dev/zero of="$TESTFILE" bs=1M count=64 oflag=direct conv=fsync 2>/dev/null
 
     # Drop caches to force reads from disk
@@ -265,7 +265,7 @@ check() {
     if [[ "$count" -gt 0 ]]; then
         pass "$label: $count events"
     else
-        fail "$label: 0 events — expected at least 1"
+        fail "$label: 0 events - expected at least 1"
         PASS=false
     fi
 }
@@ -281,6 +281,6 @@ echo ""
 if $PASS; then
     pass "All event types captured successfully!"
 else
-    fail "Some event types were missing — check the output above"
+    fail "Some event types were missing - check the output above"
     exit 1
 fi

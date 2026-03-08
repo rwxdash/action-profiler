@@ -39,7 +39,7 @@ pub struct Args {
     #[arg(long, env = "PROFILER_IGNORE", value_delimiter = ',')]
     pub ignore: Vec<String>,
 
-    /// Comma-separated cmdline patterns — ignore running processes whose cmdline matches
+    /// Comma-separated cmdline patterns - ignore running processes whose cmdline matches
     #[arg(long, env = "PROFILER_IGNORE_PATTERN", value_delimiter = ',')]
     pub ignore_pattern: Vec<String>,
 
@@ -83,7 +83,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
         env!("OUT_DIR"),
-        "/profiler"
+        "/profiler.bpf.o"
     )))?;
 
     loader::attach_programs(&mut ebpf, &args)?;

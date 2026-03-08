@@ -10,24 +10,25 @@ use crate::utils::{name_to_bytes, scan_ignored_pids};
 // "sh" excluded: `sh -c "real command"` would hide the child via fork inheritance
 const DEFAULT_IGNORE: &[&str] = &[
     "awk", "basename", "cat", "cut", "date", "echo", "envsubst", "expr", "dirname", "grep", "head",
-    "id", "ip", "ln", "ls", "lsblk", "mkdir", "mktemp", "mv", "ps", "readlink", "rm", "sed", "seq",
-    "uname", "whoami",
+    "id", "ip", "less", "ln", "ls", "lsblk", "more", "mkdir", "mktemp", "mv", "ps", "readlink",
+    "rm", "sed", "seq", "tail", "uname", "which", "whoami",
 ];
 
 pub fn attach_programs(ebpf: &mut Ebpf, args: &crate::Args) -> anyhow::Result<()> {
     setup_config(ebpf, args)?;
     setup_ignore_lists(ebpf, args)?;
-    setup_ebpf_logger(ebpf)?;
     attach_process_tracing(ebpf)?;
-    if !args.no_oom {
-        attach_oom(ebpf)?;
-    }
-    if !args.no_block_io {
-        attach_block_io(ebpf)?;
-    }
-    if !args.no_sched_latency {
-        attach_sched_latency(ebpf)?;
-    }
+
+    // TODO: uncomment when C BPF handlers are implemented
+    // if !args.no_oom {
+    //     attach_oom(ebpf)?;
+    // }
+    // if !args.no_block_io {
+    //     attach_block_io(ebpf)?;
+    // }
+    // if !args.no_sched_latency {
+    //     attach_sched_latency(ebpf)?;
+    // }
 
     Ok(())
 }
@@ -98,39 +99,8 @@ fn setup_ignore_lists(ebpf: &mut Ebpf, args: &crate::Args) -> anyhow::Result<()>
     Ok(())
 }
 
-fn setup_ebpf_logger(ebpf: &mut Ebpf) -> anyhow::Result<()> {
-    match aya_log::EbpfLogger::init(ebpf) {
-        Err(e) => {
-            warn!("failed to initialize eBPF logger: {e}");
-        }
-        Ok(logger) => {
-            let mut logger =
-                tokio::io::unix::AsyncFd::with_interest(logger, tokio::io::Interest::READABLE)?;
-            tokio::task::spawn(async move {
-                loop {
-                    let mut guard = logger.readable_mut().await.unwrap();
-                    guard.get_inner_mut().flush();
-                    guard.clear_ready();
-                }
-            });
-        }
-    }
-    Ok(())
-}
-
 fn attach_process_tracing(ebpf: &mut Ebpf) -> anyhow::Result<()> {
-    let program_exec: &mut RawTracePoint = ebpf.program_mut("handle_exec").unwrap().try_into()?;
-    program_exec.load()?;
-    program_exec.attach("sched_process_exec")?;
-
-    let program_fork: &mut TracePoint = ebpf.program_mut("handle_fork").unwrap().try_into()?;
-    program_fork.load()?;
-    program_fork.attach("sched", "sched_process_fork")?;
-
-    let program_exit: &mut TracePoint = ebpf.program_mut("handle_exit").unwrap().try_into()?;
-    program_exit.load()?;
-    program_exit.attach("sched", "sched_process_exit")?;
-
+    // C BPF function names match the tracepoint names
     let program_sys_exec: &mut TracePoint = ebpf
         .program_mut("handle_sys_enter_execve")
         .unwrap()
@@ -138,59 +108,83 @@ fn attach_process_tracing(ebpf: &mut Ebpf) -> anyhow::Result<()> {
     program_sys_exec.load()?;
     program_sys_exec.attach("syscalls", "sys_enter_execve")?;
 
+    let program_exec: &mut RawTracePoint = ebpf
+        .program_mut("handle_sched_process_exec")
+        .unwrap()
+        .try_into()?;
+    program_exec.load()?;
+    program_exec.attach("sched_process_exec")?;
+
+    let program_fork: &mut TracePoint = ebpf
+        .program_mut("handle_sched_process_fork")
+        .unwrap()
+        .try_into()?;
+    program_fork.load()?;
+    program_fork.attach("sched", "sched_process_fork")?;
+
+    let program_exit: &mut TracePoint = ebpf
+        .program_mut("handle_sched_process_exit")
+        .unwrap()
+        .try_into()?;
+    program_exit.load()?;
+    program_exit.attach("sched", "sched_process_exit")?;
+
     info!("Process tracing attached (exec/fork/exit)");
     Ok(())
 }
 
-fn attach_oom(ebpf: &mut Ebpf) -> anyhow::Result<()> {
-    let program: &mut TracePoint = ebpf.program_mut("handle_oom_kill").unwrap().try_into()?;
-    program.load()?;
-    program.attach("oom", "mark_victim")?;
-    info!("OOM kill detection attached");
-    Ok(())
-}
+// TODO: uncomment when C BPF handlers are implemented (oom.bpf.h)
+// fn attach_oom(ebpf: &mut Ebpf) -> anyhow::Result<()> {
+//     let program: &mut TracePoint = ebpf.program_mut("handle_oom_kill").unwrap().try_into()?;
+//     program.load()?;
+//     program.attach("oom", "mark_victim")?;
+//     info!("OOM kill detection attached");
+//     Ok(())
+// }
 
-fn attach_block_io(ebpf: &mut Ebpf) -> anyhow::Result<()> {
-    let issue: &mut TracePoint = ebpf
-        .program_mut("handle_block_rq_issue")
-        .unwrap()
-        .try_into()?;
-    issue.load()?;
-    issue.attach("block", "block_rq_issue")?;
+// TODO: uncomment when C BPF handlers are implemented (block_io.bpf.h)
+// fn attach_block_io(ebpf: &mut Ebpf) -> anyhow::Result<()> {
+//     let issue: &mut TracePoint = ebpf
+//         .program_mut("handle_block_rq_issue")
+//         .unwrap()
+//         .try_into()?;
+//     issue.load()?;
+//     issue.attach("block", "block_rq_issue")?;
+//
+//     let complete: &mut TracePoint = ebpf
+//         .program_mut("handle_block_rq_complete")
+//         .unwrap()
+//         .try_into()?;
+//     complete.load()?;
+//     complete.attach("block", "block_rq_complete")?;
+//
+//     info!("Block I/O latency tracking attached");
+//     Ok(())
+// }
 
-    let complete: &mut TracePoint = ebpf
-        .program_mut("handle_block_rq_complete")
-        .unwrap()
-        .try_into()?;
-    complete.load()?;
-    complete.attach("block", "block_rq_complete")?;
-
-    info!("Block I/O latency tracking attached");
-    Ok(())
-}
-
-fn attach_sched_latency(ebpf: &mut Ebpf) -> anyhow::Result<()> {
-    let wakeup: &mut TracePoint = ebpf
-        .program_mut("handle_sched_wakeup")
-        .unwrap()
-        .try_into()?;
-    wakeup.load()?;
-    wakeup.attach("sched", "sched_wakeup")?;
-
-    let wakeup_new: &mut TracePoint = ebpf
-        .program_mut("handle_sched_wakeup_new")
-        .unwrap()
-        .try_into()?;
-    wakeup_new.load()?;
-    wakeup_new.attach("sched", "sched_wakeup_new")?;
-
-    let switch: &mut TracePoint = ebpf
-        .program_mut("handle_sched_switch")
-        .unwrap()
-        .try_into()?;
-    switch.load()?;
-    switch.attach("sched", "sched_switch")?;
-
-    info!("Scheduler latency tracking attached");
-    Ok(())
-}
+// TODO: uncomment when C BPF handlers are implemented (sched.bpf.h)
+// fn attach_sched_latency(ebpf: &mut Ebpf) -> anyhow::Result<()> {
+//     let wakeup: &mut TracePoint = ebpf
+//         .program_mut("handle_sched_wakeup")
+//         .unwrap()
+//         .try_into()?;
+//     wakeup.load()?;
+//     wakeup.attach("sched", "sched_wakeup")?;
+//
+//     let wakeup_new: &mut TracePoint = ebpf
+//         .program_mut("handle_sched_wakeup_new")
+//         .unwrap()
+//         .try_into()?;
+//     wakeup_new.load()?;
+//     wakeup_new.attach("sched", "sched_wakeup_new")?;
+//
+//     let switch: &mut TracePoint = ebpf
+//         .program_mut("handle_sched_switch")
+//         .unwrap()
+//         .try_into()?;
+//     switch.load()?;
+//     switch.attach("sched", "sched_switch")?;
+//
+//     info!("Scheduler latency tracking attached");
+//     Ok(())
+// }

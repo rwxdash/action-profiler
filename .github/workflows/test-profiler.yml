@@ -47,7 +47,7 @@ jobs:
 
       # ── Workloads ─────────────────────────────────────────────────
 
-      # OOM kill test — may not work on all runners (cgroup nesting limitations)
+      # OOM kill test - may not work on all runners (cgroup nesting limitations)
       - name: "OOM kill (32MB cgroup limit, delayed)"
         continue-on-error: true
         run: |
@@ -102,7 +102,7 @@ jobs:
       - name: Drain ring buffers
         run: sleep 2
 
-      # Post phase runs automatically here — stops profiler, uploads artifact
+      # Post phase runs automatically here - stops profiler, uploads artifact
 
   validate:
     runs-on: ubuntu-latest

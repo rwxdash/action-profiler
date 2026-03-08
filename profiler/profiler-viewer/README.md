@@ -16,7 +16,7 @@ Build the WASM package:
 wasm-pack build --target web --out-dir pkg
 ```
 
-Output goes to `pkg/` — import it from `index.html`:
+Output goes to `pkg/` - import it from `index.html`:
 
 ```js
 import init, { process_jsonl } from './pkg/profiler_viewer.js';

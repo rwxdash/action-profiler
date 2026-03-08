@@ -6,11 +6,43 @@ use serde::Serialize;
 use crate::utils::bytes_to_string;
 
 const WRAPPER_SHELLS: &[&str] = &["sh", "bash", "dash", "zsh"];
+
+fn signal_name(sig: u32) -> Option<&'static str> {
+    match sig {
+        1 => Some("SIGHUP"),
+        2 => Some("SIGINT"),
+        3 => Some("SIGQUIT"),
+        4 => Some("SIGILL"),
+        5 => Some("SIGTRAP"),
+        6 => Some("SIGABRT"),
+        7 => Some("SIGBUS"),
+        8 => Some("SIGFPE"),
+        9 => Some("SIGKILL"),
+        10 => Some("SIGUSR1"),
+        11 => Some("SIGSEGV"),
+        12 => Some("SIGUSR2"),
+        13 => Some("SIGPIPE"),
+        14 => Some("SIGALRM"),
+        15 => Some("SIGTERM"),
+        17 => Some("SIGCHLD"),
+        18 => Some("SIGCONT"),
+        19 => Some("SIGSTOP"),
+        20 => Some("SIGTSTP"),
+        24 => Some("SIGXCPU"),
+        25 => Some("SIGXFSZ"),
+        31 => Some("SIGSYS"),
+        _ => None,
+    }
+}
+
 #[derive(Serialize)]
 pub struct ProcessEventRecord {
     pub time_ns: u64,
     pub event_type: &'static str,
     pub exit_code: u32,
+    pub signal: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signal_name: Option<&'static str>,
     pub duration_ns: u64,
     pub uid: u32,
     pub gid: u32,
@@ -41,6 +73,11 @@ impl From<&ProcessEvent> for ProcessEventRecord {
 
         let wrapper = WRAPPER_SHELLS.contains(&display_name.as_str());
 
+        // Raw kernel exit_code: lower 8 bits = signal, upper bits = status
+        let exit_code = e.exit_code >> 8;
+        let signal = e.exit_code & 0x7F;
+        let signal_name = signal_name(signal);
+
         Self {
             time_ns: e.time_ns,
             event_type: match e.event_type {
@@ -48,7 +85,9 @@ impl From<&ProcessEvent> for ProcessEventRecord {
                 1 => "exit",
                 _ => "unknown",
             },
-            exit_code: e.exit_code,
+            exit_code,
+            signal,
+            signal_name,
             duration_ns: e.duration_ns,
             uid: e.uid,
             gid: e.gid,

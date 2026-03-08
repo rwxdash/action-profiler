@@ -1,19 +1,70 @@
 # Action Profiler
 
-A GitHub Action profiler using Rust + eBPF (via `aya-rs`). Monitors CI workflow resources and process execution using kernel-level tracing.
+A GitHub Action that profiles CI workflows using eBPF kernel-level tracing. Captures process execution, system metrics, scheduler latency, block I/O, and OOM events — then generates interactive HTML reports.
+
+## Architecture
+
+```
+action-profiler/
+├── src/                   # TypeScript GitHub Action (entry + post-job reporting)
+├── profiler/
+│   ├── profiler/          # Rust userspace daemon (loads eBPF, collects events + metrics)
+│   ├── profiler-ebpf/     # C eBPF programs (compiled with clang, loaded via aya)
+│   ├── profiler-common/   # Shared Rust types (events, constants)
+│   └── profiler-viewer/   # WASM viewer (processes JSONL → interactive HTML)
+├── action.yml
+└── package.json
+```
+
+### eBPF: C programs + Rust userspace
+
+eBPF programs are written in C and use CO-RE (Compile Once - Run Everywhere) via `BPF_CORE_READ`. This means a single binary works across kernel versions — no per-kernel builds needed.
+
+- **C BPF programs** (`profiler-ebpf/`) — compiled by clang during `build.rs`
+- **Rust userspace** (`profiler/`) — loads the compiled `.bpf.o` via aya's `EbpfLoader`, which resolves BTF relocations at load time
+- **libbpf** — git submodule providing `bpf_helpers.h` and `bpf_core_read.h`
+
+### Tracepoints
+
+| Program | Tracepoint | Purpose |
+|---------|-----------|---------|
+| `handle_sys_enter_execve` | `syscalls/sys_enter_execve` | Stash filename + argv before exec |
+| `handle_sched_process_exec` | `raw_tp/sched_process_exec` | Emit EXEC event with CO-RE access to `linux_binprm` |
+| `handle_sched_process_fork` | `sched/sched_process_fork` | Propagate ignored PIDs to children |
+| `handle_sched_process_exit` | `sched/sched_process_exit` | Emit EXIT event with duration + exit code |
+| `handle_sched_wakeup[_new]` | `sched/sched_wakeup[_new]` | Record wakeup timestamp |
+| `handle_sched_switch` | `sched/sched_switch` | Compute scheduler latency |
+| `handle_block_rq_issue` | `block/block_rq_issue` | Record I/O request start |
+| `handle_block_rq_complete` | `block/block_rq_complete` | Compute block I/O latency |
+| `handle_oom_kill` | `oom/mark_victim` | Capture OOM kill events |
+
+### Viewer
+
+The WASM viewer (`profiler-viewer/`) processes raw JSONL events into:
+- Process tree with parent-child relationships and span computation
+- Anomaly detection (OOM kills, high scheduler latency)
+- Per-process eBPF correlation (sched latency, block I/O stats)
+- System metrics timelines
+
+The HTML report uses ECharts for interactive gantt charts, scatter plots, and time-series graphs.
 
 ## Build
 
-Requires Linux with BTF support, Rust nightly, and `bpf-linker`.
+Requires Linux with BTF support (`/sys/kernel/btf/vmlinux`), clang, and Rust stable.
 
 ```bash
 cd profiler && cargo build --release
 ```
 
+The build process:
+1. `build.rs` invokes clang to compile `profiler-ebpf/profiler.bpf.c` → `profiler.bpf.o`
+2. The compiled BPF object is embedded into the Rust binary via `include_bytes!`
+3. At runtime, aya's `EbpfLoader` resolves CO-RE relocations against the host kernel's BTF
+
 ## Usage
 
 ```bash
-# Basic — output events to stdout
+# Basic - output events to stdout
 sudo ./target/release/profiler
 
 # Write events to a JSONL file
@@ -60,34 +111,34 @@ sudo RUST_LOG=debug ./target/release/profiler
 Events are written as JSON Lines (one JSON object per line):
 
 ```json
-{"time_ns":123456789,"event_type":"exec","exit_code":0,"uid":1000,"gid":1000,"pid":4567,"tgid":4567,"ppid":1234,"name":"make","filename":"","args":[]}
+{"time_ns":123456789,"event_type":"exec","exit_code":0,"signal":0,"uid":1000,"gid":1000,"pid":4567,"tgid":4567,"ppid":1234,"name":"make","filename":"/usr/bin/make","args":["make","-j8"]}
 ```
 
 | Field | Description |
 |-------|-------------|
 | `time_ns` | Kernel timestamp (monotonic, nanoseconds) |
-| `event_type` | `"exec"` or `"exit"` |
+| `event_type` | `"exec"`, `"exit"`, `"metrics"`, `"block_io"`, `"sched_latency"`, `"oom_kill"` |
 | `pid` | Process ID |
 | `tgid` | Thread group ID |
 | `ppid` | Parent process ID |
 | `uid` / `gid` | User / group ID |
 | `name` | Command name (max 16 chars) |
-| `filename` | Executable path (when available) |
-| `args` | Command arguments (when available) |
-| `exit_code` | Process exit code (for exit events) |
-
+| `filename` | Executable path |
+| `args` | Command arguments |
+| `exit_code` | Process exit code (exit events) |
+| `signal` | Signal number if killed (exit events) |
+| `signal_name` | Signal name, e.g. `SIGKILL` (exit events) |
+| `duration_ns` | Process duration in nanoseconds (exit events) |
 
 ## Verification
 
 ### OOM Kill
 ```bash
-# Run profiler
 sudo ./target/release/profiler --output tests/profiler-events.jsonl --enable-oom
 
 # In another terminal, trigger OOM:
 python3 -c "x = [bytearray(10**6) for _ in range(10000)]"
 
-# Check output:
 jq 'select(.event_type == "oom_kill")' tests/profiler-events.jsonl
 ```
 

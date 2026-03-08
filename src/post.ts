@@ -18,7 +18,7 @@ export async function run(): Promise<void> {
     const outputPath = core.getState(STATE_OUTPUT)
 
     if (!profilerPid) {
-      core.warning('Profiler PID not found in state — was it started?')
+      core.warning('Profiler PID not found in state - was it started?')
       return
     }
 
@@ -28,7 +28,7 @@ export async function run(): Promise<void> {
       await exec.exec('sudo', ['kill', '-s', 'INT', profilerPid])
     } catch {
       core.warning(
-        `Failed to send SIGINT to PID ${profilerPid} — it may have already exited`
+        `Failed to send SIGINT to PID ${profilerPid} - it may have already exited`
       )
     }
 

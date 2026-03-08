@@ -149,7 +149,7 @@ format:
 print fmt: "%d,%d %s (%s) %llu + %u [%d]", ((unsigned int) ((REC->dev) >> 20)), ((unsigned int) ((REC->dev) & ((1U << 20) - 1))), REC->rwbs, __get_str(cmd), (unsigned long long)REC->sector, REC->nr_sector, REC->error
 
 ===== task_struct BTF dump (pahole) =====
-(pahole not installed — install dwarves package)
+(pahole not installed - install dwarves package)
 Trying bpftool btf dump instead...
 	struct address_space *faults_disabled_mapping;
 	int exit_state;

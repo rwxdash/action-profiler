@@ -25,7 +25,7 @@ export async function run(): Promise<void> {
       execSync('sudo -n true 2>/dev/null')
     } catch {
       core.warning(
-        'action-profiler requires sudo (for eBPF). Skipping — no sudo access.'
+        'action-profiler requires sudo (for eBPF). Skipping - no sudo access.'
       )
       return
     }
@@ -72,7 +72,7 @@ export async function run(): Promise<void> {
     child.unref()
 
     if (!child.pid) {
-      core.setFailed('Failed to start profiler — no PID returned')
+      core.setFailed('Failed to start profiler - no PID returned')
       return
     }
 

@@ -15,7 +15,7 @@ if [ "${1:-}" = "--check" ]; then
         echo "vmlinux.rs exists ($(wc -l < "$TARGET") lines)"
         exit 0
     else
-        echo "vmlinux.rs missing — run: ./scripts/generate-vmlinux.sh"
+        echo "vmlinux.rs missing - run: ./scripts/generate-vmlinux.sh"
         exit 1
     fi
 fi

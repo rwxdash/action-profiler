@@ -12,6 +12,10 @@ pub struct ProcessEventRaw {
     pub time_ns: u64,
     pub event_type: String,
     pub exit_code: u32,
+    #[serde(default)]
+    pub signal: u32,
+    #[serde(default)]
+    pub signal_name: Option<String>,
     pub duration_ns: u64,
     pub pid: u32,
     pub ppid: u32,
@@ -124,6 +128,9 @@ pub struct ProcessOut {
     pub wrapper: bool,
     pub args: Vec<String>,
     pub exit_code: Option<u32>,
+    pub signal: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signal_name: Option<String>,
     pub start_s: f64,
     pub end_s: Option<f64>,
     pub duration_ms: f64,
@@ -235,9 +242,13 @@ pub struct ProcessTreeNode {
     pub wrapper: bool,
     pub args: Vec<String>,
     pub exit_code: Option<u32>,
+    pub signal: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signal_name: Option<String>,
     pub start_s: f64,
     pub end_s: Option<f64>,
     pub duration_ms: f64,
+    pub span_ms: f64,
     pub on_critical_path: bool,
     pub ebpf: ProcessEbpfStats,
     pub children: Vec<ProcessTreeNode>,

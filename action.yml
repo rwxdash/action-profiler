@@ -1,5 +1,5 @@
 name: "Action Profiler"
-description: "Profile GitHub Actions workflows with eBPF — process tracing, system metrics, and interactive reports"
+description: "Profile GitHub Actions workflows with eBPF - process tracing, system metrics, and interactive reports"
 author: "Oguzhan Ozdemir"
 
 branding:

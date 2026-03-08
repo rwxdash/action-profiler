@@ -5,5 +5,11 @@
         "timonwong.shellcheck",
         "redhat.vscode-yaml",
         "tamasfe.even-better-toml",
+        "ms-vscode.cpptools",
+        "ms-vscode.cpp-devtools",
+        "ms-vscode.cpptools-extension-pack",
+        "ms-vscode.cmake-tools",
+        "ms-vscode.makefile-tools",
+        "llvm-vs-code-extensions.vscode-clangd",
     ]
 }

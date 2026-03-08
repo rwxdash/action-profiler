@@ -75,6 +75,22 @@ pub fn build_process_tree(
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
+        // span_ms = time from own start to the latest end among self + all descendants
+        let own_end = p.end_s.unwrap_or(p.start_s + p.duration_ms / 1000.0);
+        let child_max_end = child_nodes
+            .iter()
+            .filter_map(|c| {
+                let c_end = c.start_s + c.span_ms / 1000.0;
+                Some(c_end)
+            })
+            .fold(f64::NEG_INFINITY, f64::max);
+        let span_end = if child_max_end > f64::NEG_INFINITY {
+            own_end.max(child_max_end)
+        } else {
+            own_end
+        };
+        let span_ms = (span_end - p.start_s) * 1000.0;
+
         ProcessTreeNode {
             pid: p.pid,
             ppid: p.ppid,
@@ -84,9 +100,12 @@ pub fn build_process_tree(
             wrapper: p.wrapper,
             args: p.args.clone(),
             exit_code: p.exit_code,
+            signal: p.signal,
+            signal_name: p.signal_name.clone(),
             start_s: p.start_s,
             end_s: p.end_s,
             duration_ms: p.duration_ms,
+            span_ms,
             on_critical_path: false,
             ebpf,
             children: child_nodes,

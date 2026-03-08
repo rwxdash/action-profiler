@@ -24,7 +24,7 @@ if [ -f /sys/kernel/btf/vmlinux ]; then
     ls -lh /sys/kernel/btf/vmlinux
     echo "BTF is available"
 else
-    echo "NO /sys/kernel/btf/vmlinux — CO-RE will NOT work"
+    echo "NO /sys/kernel/btf/vmlinux - CO-RE will NOT work"
 fi
 
 echo ""
@@ -77,14 +77,14 @@ fi
 echo ""
 echo "===== task_struct BTF dump (pahole) ====="
 if command -v pahole &>/dev/null; then
-    # Dump task_struct with field offsets — focus on exit_code, real_parent, tgid, pid
+    # Dump task_struct with field offsets - focus on exit_code, real_parent, tgid, pid
     pahole -C task_struct /sys/kernel/btf/vmlinux 2>/dev/null | head -200
     echo "..."
     echo ""
     echo "-- Specific fields --"
     pahole -C task_struct /sys/kernel/btf/vmlinux 2>/dev/null | grep -E '(exit_code|real_parent|tgid|pid|__state)' || true
 else
-    echo "(pahole not installed — install dwarves package)"
+    echo "(pahole not installed - install dwarves package)"
     echo "Trying bpftool btf dump instead..."
     if command -v bpftool &>/dev/null; then
         bpftool btf dump file /sys/kernel/btf/vmlinux format c 2>/dev/null | grep -A2 -B2 'exit_code' | head -20

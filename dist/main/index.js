@@ -28036,7 +28036,7 @@ async function run() {
             execSync('sudo -n true 2>/dev/null');
         }
         catch {
-            warning('action-profiler requires sudo (for eBPF). Skipping — no sudo access.');
+            warning('action-profiler requires sudo (for eBPF). Skipping - no sudo access.');
             return;
         }
         const profilerBin = resolveProfilerBin();
@@ -28068,7 +28068,7 @@ async function run() {
         });
         child.unref();
         if (!child.pid) {
-            setFailed('Failed to start profiler — no PID returned');
+            setFailed('Failed to start profiler - no PID returned');
             return;
         }
         saveState(STATE_PID, child.pid.toString());
