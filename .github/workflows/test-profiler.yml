@@ -14,10 +14,14 @@ jobs:
           fetch-depth: 1
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install clang
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq clang
+      - name: Install clang and wasm-pack
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq clang
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: Build profiler
         run: |
@@ -25,6 +29,13 @@ jobs:
           mkdir -p bin
           cp target/release/profiler bin/profiler
           chmod +x bin/profiler
+
+      - name: Build WASM viewer
+        run: |
+          cd profiler/profiler-viewer && wasm-pack build --target web --release
+          cp pkg/profiler_viewer.js ../bin/out/pkg/
+          cp pkg/profiler_viewer_bg.wasm ../bin/out/pkg/
+          cp ../tests/index.html ../bin/out/index.html
 
       - uses: ./
         id: profiler
