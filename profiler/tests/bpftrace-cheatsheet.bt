@@ -1,0 +1,359 @@
+#!/usr/bin/env bpftrace
+//
+// bpftrace cheatsheet for every tracepoint used by the profiler.
+// Run individual one-liners with: sudo bpftrace -e '...'
+// Or run this whole file with:    sudo bpftrace bpftrace-cheatsheet.bt
+//
+// This file is meant for learning and prototyping. Each section shows
+// the raw tracepoint data so you can see what the profiler's C BPF
+// handlers are working with.
+//
+// TIP: To see available fields for any tracepoint:
+//   sudo bpftrace -lv 'tracepoint:sched:sched_process_exec'
+//
+// TIP: To see all tracepoints in a category:
+//   sudo bpftrace -l 'tracepoint:block:*'
+
+// ================================================================
+// PROCESS TRACING
+// ================================================================
+
+// --- execve syscall entry (captures argv before exec happens) ---
+// One-liner:
+//   sudo bpftrace -e 'tracepoint:syscalls:sys_enter_execve { printf("exec: %s %s\n", str(args->filename), comm); }'
+//
+tracepoint:syscalls:sys_enter_execve
+{
+    printf("[exec] pid=%d comm=%s filename=%s\n",
+        pid, comm, str(args->filename));
+}
+
+// --- exec complete (after exec succeeds, new binary is loaded) ---
+// One-liner:
+//   sudo bpftrace -e 'tracepoint:sched:sched_process_exec { printf("exec done: pid=%d %s\n", pid, comm); }'
+//
+tracepoint:sched:sched_process_exec
+{
+    printf("[exec_done] pid=%d comm=%s filename=%s\n",
+        pid, comm, str(args->filename));
+}
+
+// --- fork (child inherits parent's ignore status in profiler) ---
+// One-liner:
+//   sudo bpftrace -e 'tracepoint:sched:sched_process_fork { printf("fork: parent=%d child=%d\n", args->parent_pid, args->child_pid); }'
+//
+tracepoint:sched:sched_process_fork
+{
+    printf("[fork] parent_pid=%d parent_comm=%s child_pid=%d\n",
+        args->parent_pid, comm, args->child_pid);
+}
+
+// --- exit (process exits, raw exit_code has signal in lower bits) ---
+// One-liner:
+//   sudo bpftrace -e 'tracepoint:sched:sched_process_exit { printf("exit: pid=%d comm=%s prio=%d\n", args->pid, args->comm, args->prio); }'
+//
+tracepoint:sched:sched_process_exit
+{
+    printf("[exit] pid=%d comm=%s prio=%d\n",
+        args->pid, args->comm, args->prio);
+}
+
+// ================================================================
+// SCHEDULER LATENCY
+// ================================================================
+//
+// Our C BPF handlers use tp_btf (not tp/) for scheduler tracepoints.
+// This gives us typed struct task_struct * parameters with CO-RE,
+// same as BCC's runqlat.bpf.c and runqslower.bpf.c.
+//
+// In C BPF, tp_btf handlers look like:
+//
+//   SEC("tp_btf/sched_wakeup")
+//   int BPF_PROG(handle_sched_wakeup, struct task_struct *p)
+//   {
+//       __u32 pid = BPF_CORE_READ(p, pid);   // thread ID
+//       __u32 tgid = BPF_CORE_READ(p, tgid); // process ID
+//       // No hardcoded offsets - CO-RE patches at load time
+//   }
+//
+//   SEC("tp_btf/sched_switch")
+//   int BPF_PROG(handle_sched_switch, bool preempt,
+//                struct task_struct *prev, struct task_struct *next)
+//   {
+//       __u32 pid = BPF_CORE_READ(next, pid);
+//       int prio = BPF_CORE_READ(next, prio);
+//       // "next" is the task being scheduled IN
+//   }
+//
+// In the aya Rust loader, use BtfTracePoint instead of TracePoint:
+//
+//   let prog: &mut BtfTracePoint = ebpf.program_mut("handle_sched_wakeup")...;
+//   prog.load()?;
+//   prog.attach()?;  // no category/name needed
+//
+// bpftrace uses the tp/ interface below (it doesn't support tp_btf
+// syntax), but the data is the same -- just accessed differently.
+
+// --- wakeup (task becomes runnable, we stash timestamp) ---
+// One-liner:
+//   sudo bpftrace -e 'tracepoint:sched:sched_wakeup { printf("wakeup: pid=%d comm=%s target_cpu=%d\n", args->pid, args->comm, args->target_cpu); }'
+//
+tracepoint:sched:sched_wakeup
+{
+    // Stash wakeup time - in bpftrace this is automatic with maps
+    @wakeup[args->pid] = nsecs;
+}
+
+// --- wakeup_new (same as wakeup but for newly forked tasks) ---
+// One-liner:
+//   sudo bpftrace -e 'tracepoint:sched:sched_wakeup_new { printf("wakeup_new: pid=%d comm=%s\n", args->pid, args->comm); }'
+//
+tracepoint:sched:sched_wakeup_new
+{
+    @wakeup[args->pid] = nsecs;
+}
+
+// --- switch (task gets CPU, compute latency from wakeup) ---
+// One-liner (shows latencies > 5ms):
+//   sudo bpftrace -e 'tracepoint:sched:sched_wakeup { @wake[args->pid] = nsecs; } tracepoint:sched:sched_switch /@wake[args->next_pid]/ { $lat = nsecs - @wake[args->next_pid]; delete(@wake[args->next_pid]); if ($lat > 5000000) { printf("lat=%dms pid=%d comm=%s\n", $lat/1000000, args->next_pid, args->next_comm); } }'
+//
+tracepoint:sched:sched_switch
+/@wakeup[args->next_pid]/
+{
+    $latency_ns = nsecs - @wakeup[args->next_pid];
+    delete(@wakeup[args->next_pid]);
+
+    // Only print if > 1ms (reduce noise)
+    if ($latency_ns > 1000000) {
+        printf("[sched] pid=%d comm=%s latency=%dms prio=%d\n",
+            args->next_pid, args->next_comm,
+            $latency_ns / 1000000, args->next_prio);
+    }
+}
+
+// ================================================================
+// BLOCK I/O LATENCY
+// ================================================================
+//
+// There are THREE ways to attach to block_rq_* tracepoints:
+//
+//   tp/block/block_rq_issue     - formatted record, manual offsets (fragile!)
+//   raw_tp/block_rq_issue       - raw kernel function args, cast to structs
+//   tp_btf/block_rq_issue       - typed struct params via BTF (best)
+//
+// We use tp_btf because it gives us struct request * directly, and
+// CO-RE (BPF_CORE_READ) handles field offset differences across kernels.
+// This avoids the ioprio offset problem (kernel 6.14+ shifted rwbs from
+// offset 32 to 34 in the tp/ formatted record).
+//
+// In C BPF, tp_btf handlers look like:
+//
+//   SEC("tp_btf/block_rq_issue")
+//   int BPF_PROG(handle_block_rq_issue, struct request *rq)
+//   {
+//       u64 sector = BPF_CORE_READ(rq, __sector);
+//       u32 flags  = BPF_CORE_READ(rq, cmd_flags);
+//       // No hardcoded offsets - CO-RE patches at load time
+//   }
+//
+// In the aya Rust loader, use BtfTracePoint instead of TracePoint:
+//
+//   let prog: &mut BtfTracePoint = ebpf.program_mut("handle_block_rq_issue")...;
+//   prog.load()?;
+//   prog.attach()?;  // no category/name needed
+//
+// cmd_flags replaces rwbs - decode the operation in userspace:
+//   REQ_OP_READ=0, REQ_OP_WRITE=1, REQ_OP_FLUSH=2, REQ_OP_DISCARD=3
+//
+// For dev, navigate struct hierarchy with CO-RE:
+//   request -> q -> disk -> major/first_minor
+// But disk field moved between kernels (rq->rq_disk vs rq->q->disk),
+// so use bpf_core_field_exists() to detect which one is available.
+
+// --- issue (I/O request submitted to device) ---
+// One-liner (using regular tp - good for quick exploration):
+//   sudo bpftrace -e 'tracepoint:block:block_rq_issue { printf("issue: dev=%d sector=%lld rwbs=%s comm=%s\n", args->dev, args->sector, args->rwbs, args->comm); }'
+//
+// One-liner (using kfunc - equivalent to tp_btf, shows CO-RE fields):
+//   sudo bpftrace -e 'tracepoint:block:block_rq_issue { printf("issue: dev=%d sector=%lld nr_sectors=%d bytes=%d cmd_flags=0x%x comm=%s\n", args->dev, args->sector, args->nr_sector, args->bytes, args->nr_sector, args->comm); }'
+//
+tracepoint:block:block_rq_issue
+{
+    @io_start[args->dev, args->sector] = nsecs;
+    @io_comm[args->dev, args->sector] = comm;
+}
+
+// --- complete (I/O request finished, compute latency) ---
+// One-liner (issue+complete paired, shows latencies > 1ms):
+//   sudo bpftrace -e 'tracepoint:block:block_rq_issue { @start[args->dev, args->sector] = nsecs; } tracepoint:block:block_rq_complete /@start[args->dev, args->sector]/ { $lat = nsecs - @start[args->dev, args->sector]; delete(@start[args->dev, args->sector]); if ($lat > 1000000) { printf("io lat=%dms dev=%d sector=%lld rwbs=%s\n", $lat/1000000, args->dev, args->sector, args->rwbs); } }'
+//
+tracepoint:block:block_rq_complete
+/@io_start[args->dev, args->sector]/
+{
+    $latency_ns = nsecs - @io_start[args->dev, args->sector];
+
+    // Only print if > 1ms
+    if ($latency_ns > 1000000) {
+        printf("[block_io] dev=%d sector=%lld latency=%dms rwbs=%s comm=%s\n",
+            args->dev, args->sector,
+            $latency_ns / 1000000, args->rwbs,
+            @io_comm[args->dev, args->sector]);
+    }
+
+    delete(@io_start[args->dev, args->sector]);
+    delete(@io_comm[args->dev, args->sector]);
+}
+
+// ================================================================
+// OOM KILL
+// ================================================================
+
+// --- mark_victim (kernel chose a process to kill) ---
+// One-liner:
+//   sudo bpftrace -e 'tracepoint:oom:mark_victim { printf("OOM KILL: pid=%d comm=%s total_vm=%ldKB anon_rss=%ldKB\n", args->pid, args->comm, args->total_vm, args->anon_rss); }'
+//
+tracepoint:oom:mark_victim
+{
+    printf("[oom_kill] victim_pid=%d victim=%s total_vm=%ldKB anon_rss=%ldKB file_rss=%ldKB shmem_rss=%ldKB oom_score_adj=%d oncpu=%s\n",
+        args->pid, args->comm,
+        args->total_vm, args->anon_rss, args->file_rss, args->shmem_rss,
+        args->oom_score_adj, comm);
+}
+
+// ================================================================
+// TCP CONNECTIONS
+// ================================================================
+
+// --- inet_sock_set_state (every TCP state transition) ---
+// One-liner (show new connections only):
+//   sudo bpftrace -e 'tracepoint:sock:inet_sock_set_state /args->newstate == 1 && args->oldstate == 2/ { printf("connect: %s:%d -> %s:%d comm=%s\n", ntop(args->family, args->saddr), args->sport, ntop(args->family, args->daddr), args->dport, comm); }'
+//
+// One-liner (show all state transitions):
+//   sudo bpftrace -e 'tracepoint:sock:inet_sock_set_state { printf("tcp: %d->%d %s:%d->%s:%d comm=%s\n", args->oldstate, args->newstate, ntop(args->family, args->saddr), args->sport, ntop(args->family, args->daddr), args->dport, comm); }'
+//
+// Track connect latency (SYN_SENT=2 -> ESTABLISHED=1):
+//   sudo bpftrace -e 'tracepoint:sock:inet_sock_set_state /args->newstate == 2/ { @syn[args->skaddr] = nsecs; } tracepoint:sock:inet_sock_set_state /args->newstate == 1 && @syn[args->skaddr]/ { $lat = nsecs - @syn[args->skaddr]; delete(@syn[args->skaddr]); printf("connect: %dms %s:%d -> %s:%d %s\n", $lat/1000000, ntop(args->family, args->saddr), args->sport, ntop(args->family, args->daddr), args->dport, comm); }'
+//
+tracepoint:sock:inet_sock_set_state
+{
+    // State names for readability
+    // 1=ESTABLISHED 2=SYN_SENT 3=SYN_RECV 7=CLOSE 10=LISTEN 12=NEW_SYN_RECV
+
+    // Stash on SYN_SENT for connect latency
+    if (args->newstate == 2) {
+        @tcp_start[args->skaddr] = nsecs;
+    }
+
+    // Connect complete (SYN_SENT -> ESTABLISHED)
+    if (args->newstate == 1 && args->oldstate == 2) {
+        $latency = @tcp_start[args->skaddr]
+            ? nsecs - @tcp_start[args->skaddr]
+            : 0;
+        delete(@tcp_start[args->skaddr]);
+
+        printf("[tcp_connect] %s:%d -> %s:%d latency=%dms comm=%s\n",
+            ntop(args->family, args->saddr), args->sport,
+            ntop(args->family, args->daddr), args->dport,
+            $latency / 1000000, comm);
+    }
+
+    // Accept (SYN_RECV/NEW_SYN_RECV -> ESTABLISHED)
+    if (args->newstate == 1 && (args->oldstate == 3 || args->oldstate == 12)) {
+        printf("[tcp_accept] %s:%d <- %s:%d comm=%s\n",
+            ntop(args->family, args->saddr), args->sport,
+            ntop(args->family, args->daddr), args->dport, comm);
+    }
+
+    // Close
+    if (args->newstate == 7) {
+        printf("[tcp_close] %s:%d -> %s:%d comm=%s\n",
+            ntop(args->family, args->saddr), args->sport,
+            ntop(args->family, args->daddr), args->dport, comm);
+    }
+}
+
+// ================================================================
+// EXPLORING KERNEL STRUCTS
+// ================================================================
+//
+// When writing tp_btf handlers, you work with kernel structs directly
+// (struct request, struct task_struct, etc.) instead of tracepoint
+// format records. Use these techniques to discover fields and
+// understand their values.
+//
+// --- List fields of a tracepoint ---
+// Shows the formatted record layout (field names, offsets, sizes):
+//   sudo bpftrace -lv 'tracepoint:block:block_rq_issue'
+//
+// --- List fields of a kernel struct ---
+// Shows all fields available via BTF (what tp_btf/CO-RE can access):
+//   sudo bpftrace -lv 'struct request'
+//   sudo bpftrace -lv 'struct task_struct'
+//   sudo bpftrace -lv 'struct gendisk'
+//
+// --- Filter for specific fields ---
+//   sudo bpftrace -lv 'struct request' | grep -E 'sector|data_len|cmd_flags'
+//
+// --- Compare tracepoint fields vs struct fields ---
+// Tracepoint format gives you pre-computed values:
+//   bytes, nr_sector, rwbs (string), dev, sector, comm
+//
+// tp_btf gives you the raw struct request:
+//   __sector, __data_len (bytes), cmd_flags (bitmask), q->disk->major
+//
+// Discover relationships by printing both side by side:
+//   sudo bpftrace -e 'tracepoint:block:block_rq_issue {
+//       printf("bytes=%d nr_sector=%d sector=%lld rwbs=%s\n",
+//           args->bytes, args->nr_sector, args->sector, args->rwbs);
+//   }'
+//
+// From the output you can see:
+//   bytes=4096 nr_sector=8    -> 4096 / 512 = 8 (sector = 512 bytes)
+//   bytes=8    nr_sector=0    -> flush request (no data sectors)
+//
+// This tells you: __data_len / 512 = nr_sectors. In BPF, use
+// bit-shift: __data_len >> 9 (since 2^9 = 512).
+//
+// --- Explore cmd_flags values ---
+// cmd_flags is a bitmask. Lower 8 bits = operation type:
+//   sudo bpftrace -e 'tracepoint:block:block_rq_issue {
+//       printf("rwbs=%s cmd_flags=0x%x op=%d\n",
+//           args->rwbs, args->nr_sector, args->nr_sector & 0xFF);
+//   }'
+//
+// Note: bpftrace's tracepoint interface doesn't expose cmd_flags
+// directly. To see it, use kfunc or kprobe on blk_mq_start_request:
+//   sudo bpftrace -e 'kprobe:blk_mq_start_request {
+//       $rq = (struct request *)arg0;
+//       printf("cmd_flags=0x%x op=%d sector=%lld\n",
+//           $rq->cmd_flags, $rq->cmd_flags & 0xFF, $rq->__sector);
+//   }'
+//
+// op=0 -> READ, op=1 -> WRITE, op=2 -> FLUSH, op=3 -> DISCARD
+//
+// --- Navigate struct pointer chains ---
+// To find device info from struct request (tp_btf path):
+//   sudo bpftrace -e 'kprobe:blk_mq_start_request {
+//       $rq = (struct request *)arg0;
+//       $disk = $rq->q->disk;
+//       printf("major=%d minor=%d sector=%lld\n",
+//           $disk->major, $disk->first_minor, $rq->__sector);
+//   }'
+//
+// --- List all tracepoints in a category ---
+//   sudo bpftrace -l 'tracepoint:block:*'
+//   sudo bpftrace -l 'tracepoint:sched:*'
+//   sudo bpftrace -l 'tracepoint:sock:*'
+//   sudo bpftrace -l 'tracepoint:oom:*'
+
+// ================================================================
+// CLEANUP (bpftrace auto-cleans maps on exit, but be explicit)
+// ================================================================
+
+END
+{
+    clear(@wakeup);
+    clear(@io_start);
+    clear(@io_comm);
+    clear(@tcp_start);
+}
