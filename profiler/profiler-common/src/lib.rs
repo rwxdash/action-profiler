@@ -38,6 +38,11 @@ pub const EVENT_EXIT: u8 = 1;
 pub const EVENT_OOM_KILL: u8 = 2;
 pub const EVENT_BLOCK_IO: u8 = 3;
 pub const EVENT_SCHED_LATENCY: u8 = 4;
+pub const EVENT_TCP: u8 = 5;
+
+pub const TCP_TYPE_CONNECT: u8 = 0;
+pub const TCP_TYPE_ACCEPT: u8 = 1;
+pub const TCP_TYPE_CLOSE: u8 = 2;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -46,13 +51,13 @@ pub struct OomKillEvent {
     pub event_type: u8,                       // EVENT_OOM_KILL (2)
     pub pid: u32,                             // Victim PID
     pub uid: u32,                             // Victim UID
-    pub total_vm_kb: u64,                     // Total virtual memory (KB, via PG_COUNT_TO_KB)
+    pub total_vm_kb: u64,                     // Total virtual memory (KB, via PG_TO_KB)
     pub anon_rss_kb: u64,                     // Anonymous RSS (KB)
     pub file_rss_kb: u64,                     // File-backed RSS (KB)
     pub shmem_rss_kb: u64,                    // Shared memory RSS (KB)
     pub pgtables_kb: u64,                     // Page table memory (KB, mm_pgtables_bytes >> 10)
     pub oom_score_adj: i16,                   // OOM score adjustment
-    pub victim_name: [u8; MAX_PROC_NAME_LEN], // Victim comm (from __data_loc)
+    pub victim_name: [u8; MAX_PROC_NAME_LEN], // Victim comm (from task->comm via CO-RE)
     pub oncpu_name: [u8; MAX_PROC_NAME_LEN],  // on-CPU when OOM fired (not necessarily the cause)
 }
 
@@ -65,7 +70,7 @@ pub struct BlockIoEvent {
     pub sector: u64,                   // Starting sector
     pub nr_sectors: u32,               // Request size in sectors
     pub latency_ns: u64,               // Time from issue to complete
-    pub rwbs: [u8; 8],                 // R/W/D flags (raw from tracepoint)
+    pub cmd_flags: u32,                // cmd_flags bitmask (lo8 bits op: 0=r,1=w,2=flush,3=discard)
     pub pid: u32,                      // Process that issued the I/O
     pub name: [u8; MAX_PROC_NAME_LEN], // Process comm
 }
@@ -76,7 +81,7 @@ pub struct BlockIoStash {
     pub time_ns: u64,
     pub pid: u32,                      // Process ID
     pub name: [u8; MAX_PROC_NAME_LEN], // Process comm
-    pub rwbs: [u8; 8],                 // RWBS flags
+    pub cmd_flags: u32,                // cmd_flags bitmask
     pub nr_sectors: u32,               // Number of sectors
 }
 
@@ -89,5 +94,23 @@ pub struct SchedLatencyEvent {
     pub latency_ns: u64,               // Time spent waiting in run queue
     pub prio: i32,                     // Task priority
     pub target_cpu: i32,               // CPU the task was scheduled on
+    pub name: [u8; MAX_PROC_NAME_LEN], // Process comm
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct TcpEvent {
+    pub time_ns: u64,
+    pub event_type: u8,                // EVENT_TCP (5)
+    pub tcp_type: u8,                  // TCP_TYPE_CONNECT/ACCEPT/CLOSE
+    pub family: u16,                   // AF_INET=2, AF_INET6=10
+    pub pid: u32,                      // -
+    pub saddr_v4: u32,                 // Source IPv4 (network byte order)
+    pub daddr_v4: u32,                 // Dest IPv4 (network byte order)
+    pub saddr_v6: [u8; 16],            // Source IPv6
+    pub daddr_v6: [u8; 16],            // Dest IPv6
+    pub sport: u16,                    // Source port
+    pub dport: u16,                    // Dest port
+    pub duration_ns: u64,              // Connect latency or connection duration
     pub name: [u8; MAX_PROC_NAME_LEN], // Process comm
 }

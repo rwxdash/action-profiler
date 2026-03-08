@@ -1,7 +1,11 @@
 {
+    "C_Cpp.intelliSenseEngine": "disabled",
     "rust-analyzer.cargo.buildScripts.rebuildOnSave": true,
     "rust-analyzer.check.command": "build",
     "rust-analyzer.check.extraArgs": [
         "--release"
-    ]
+    ],
+    "rust-analyzer.linkedProjects": [
+        "./profiler/Cargo.toml",
+    ],
 }

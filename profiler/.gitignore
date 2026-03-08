@@ -10,3 +10,6 @@ target/
 
 # Ignore JSONL files
 **/*.jsonl
+
+# Generated from /sys/kernel/btf/vmlinux at build time (kernel-specific)
+profiler-ebpf/src/vmlinux.rs

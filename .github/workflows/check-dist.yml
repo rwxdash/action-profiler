@@ -1,75 +1,72 @@
-# In TypeScript actions, `dist/` is a special directory. When you reference
-# an action with the `uses:` property, `dist/index.js` is the code that will be
-# run. For this project, the `dist/index.js` file is transpiled from other
-# source files. This workflow ensures the `dist/` directory contains the
-# expected transpiled code.
-#
-# If this workflow is run from a feature branch, it will act as an additional CI
-# check and fail if the checked-in `dist/` directory does not match what is
-# expected from the build.
-name: Check Transpiled JavaScript
+# Verifies that:
+# 1. Profiler binary and WASM viewer compile successfully
+# 2. Checked-in dist/ and viewer assets match what would be built from source
+name: Check Build Outputs
 
 on:
   pull_request:
-    branches:
-      - master
+    branches: [master]
   push:
-    branches:
-      - master
+    branches: [master]
 
 permissions:
   contents: read
 
 jobs:
   check-dist:
-    name: Check dist/
+    name: Check build outputs
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        id: checkout
         uses: actions/checkout@v6
 
       - name: Setup Node.js
-        id: setup-node
         uses: actions/setup-node@v6
         with:
           node-version-file: .node-version
           cache: npm
 
-      - name: Remove dist/ Directory
-        id: remove-dist
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Remove dist/
         run: npx rimraf ./dist
 
       - name: Install Dependencies
-        id: install
         run: npm ci
 
-      - name: Build dist/ Directory
-        id: build
-        run: npm run bundle
+      - name: Build (skip profiler binary)
+        run: |
+          bash scripts/build.sh --skip-binary
+          npx rimraf ./dist
+          npx rollup --config rollup.config.ts --configPlugin @rollup/plugin-typescript
 
-      # This will fail the workflow if the `dist/` directory is different than
-      # expected.
-      - name: Compare Directories
+      # Diff only deterministic outputs: transpiled JS, copied HTML/echarts/JS glue.
+      # Compiled artifacts (binary, WASM) aren't reproducible — the build step
+      # above already verifies they compile. A separate release workflow commits them.
+      - name: Compare Deterministic Outputs
         id: diff
         run: |
           if [ ! -d dist/ ]; then
-            echo "Expected dist/ directory does not exist.  See status below:"
+            echo "Expected dist/ directory does not exist."
             ls -la ./
             exit 1
           fi
-          if [ "$(git diff --ignore-space-at-eol --text dist/ | wc -l)" -gt "0" ]; then
+          DIFF="$(git diff --ignore-space-at-eol --text dist/ profiler/bin/out/index.html profiler/bin/out/echarts.min.js profiler/bin/out/pkg/profiler_viewer.js | wc -l)"
+          if [ "$DIFF" -gt "0" ]; then
             echo "Detected uncommitted changes after build. See status below:"
-            git diff --ignore-space-at-eol --text dist/
+            git diff --ignore-space-at-eol --text --stat dist/ profiler/bin/out/index.html profiler/bin/out/echarts.min.js profiler/bin/out/pkg/profiler_viewer.js
             exit 1
           fi
 
-      # If `dist/` was different than expected, upload the expected version as a
-      # workflow artifact.
       - if: ${{ failure() && steps.diff.outcome == 'failure' }}
         name: Upload Artifact
-        id: upload
         uses: actions/upload-artifact@v5
         with:
           name: dist

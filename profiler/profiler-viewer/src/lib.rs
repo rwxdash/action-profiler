@@ -18,6 +18,7 @@ fn process(text: &str) -> ViewerResult {
     let mut metrics_events = Vec::new();
     let mut block_io_events = Vec::new();
     let mut sched_events = Vec::new();
+    let mut tcp_events = Vec::new();
     let mut oom_events = Vec::new();
     let mut total_events = 0u64;
 
@@ -54,6 +55,11 @@ fn process(text: &str) -> ViewerResult {
                     sched_events.push(e);
                 }
             }
+            "tcp" => {
+                if let Ok(e) = serde_json::from_str::<TcpEventRaw>(line) {
+                    tcp_events.push(e);
+                }
+            }
             "oom_kill" => {
                 if let Ok(e) = serde_json::from_str::<OomKillEventRaw>(line) {
                     oom_events.push(e);
@@ -74,6 +80,9 @@ fn process(text: &str) -> ViewerResult {
         t0 = t0.min(e.time_ns);
     }
     for e in &sched_events {
+        t0 = t0.min(e.time_ns);
+    }
+    for e in &tcp_events {
         t0 = t0.min(e.time_ns);
     }
     for e in &oom_events {
@@ -102,8 +111,8 @@ fn process(text: &str) -> ViewerResult {
         .map(|e| BlockIoOut {
             time_s: ns_to_s(e.time_ns, t0),
             latency_ms: e.latency_ns as f64 / 1e6,
-            is_read: e.rwbs.starts_with('R'),
-            rwbs: e.rwbs.clone(),
+            is_read: e.operation == "read",
+            operation: e.operation.clone(),
             nr_sectors: e.nr_sectors,
             name: e.name.clone(),
             pid: e.pid,
@@ -119,6 +128,25 @@ fn process(text: &str) -> ViewerResult {
             pid: e.pid,
         })
         .collect();
+
+    let tcp: Vec<TcpOut> = tcp_events
+        .iter()
+        .map(|e| TcpOut {
+            time_s: ns_to_s(e.time_ns, t0),
+            tcp_type: e.tcp_type.clone(),
+            pid: e.pid,
+            saddr: e.saddr.clone(),
+            daddr: e.daddr.clone(),
+            sport: e.sport,
+            dport: e.dport,
+            duration_ms: e.duration_ns as f64 / 1e6,
+            name: e.name.clone(),
+            endpoint: format!("{}:{}", e.daddr, e.dport),
+        })
+        .collect();
+
+    let tcp_connections = aggregate::pair_tcp_connections(&tcp_events, t0);
+    let tcp_summaries = aggregate::aggregate_tcp(&tcp_events, t0);
 
     let block_io_summaries = aggregate::aggregate_block_io(&block_io_events, t0);
     let sched_summaries = aggregate::aggregate_sched_latency(&sched_events, t0);
@@ -161,10 +189,12 @@ fn process(text: &str) -> ViewerResult {
         block_io_count: block_io_events.len() as u64,
         sched_latency_count: sched_events.len() as u64,
         metrics_count: metrics_events.len() as u64,
+        tcp_count: tcp_events.len() as u64,
         oom_kill_count: oom_events.len() as u64,
     };
 
-    let process_tree = tree::build_process_tree(&processes, &block_io_events, &sched_events);
+    let process_tree =
+        tree::build_process_tree(&processes, &block_io_events, &sched_events, &tcp_events);
     let anomalies = anomaly::compute_anomalies(&oom_events, &sched_events, &processes);
 
     ViewerResult {
@@ -176,6 +206,9 @@ fn process(text: &str) -> ViewerResult {
         sched_latency,
         block_io_summaries,
         sched_summaries,
+        tcp,
+        tcp_connections,
+        tcp_summaries,
         oom_kills,
         stats,
     }

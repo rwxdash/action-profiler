@@ -1,0 +1,32 @@
+name: Kernel Debug Info
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-22.04]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bpftool (prebuilt)
+        run: |
+          curl -fsSL https://github.com/libbpf/bpftool/releases/download/v7.6.0/bpftool-v7.6.0-amd64.tar.gz | sudo tar -xz -C /usr/local/bin/
+          sudo chmod +x /usr/local/bin/bpftool
+          bpftool version
+
+      - name: Install debug tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq dwarves 2>/dev/null || true
+
+      - name: Run kernel debug script
+        run: bash scripts/kernel-debug.sh kernel-debug-${{ matrix.runner }}.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kernel-debug-${{ matrix.runner }}
+          path: kernel-debug-${{ matrix.runner }}.txt
+          retention-days: 7

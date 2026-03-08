@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
-# Integration test — exercises all event types.
+# Integration test - exercises all event types.
 # Usage: sudo ./tests/run-profiler-test.sh
 set -euo pipefail
 
-# Preserve user's PATH under sudo (cargo, rustup, etc.)
+# Preserve user's PATH under sudo (cargo, rustup, fnm/node, etc.)
 if [[ -n "${SUDO_USER:-}" ]]; then
     USER_HOME=$(eval echo "~$SUDO_USER")
     export PATH="$USER_HOME/.cargo/bin:$USER_HOME/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin:/usr/local/bin:$PATH"
     export RUSTUP_HOME="$USER_HOME/.rustup"
     export CARGO_HOME="$USER_HOME/.cargo"
+
+    # fnm (Fast Node Manager) -- source env to get node/npm on PATH
+    FNM_DIR="$USER_HOME/.local/share/fnm"
+    if [[ -d "$FNM_DIR" ]]; then
+        export FNM_DIR
+        export PATH="$FNM_DIR:$PATH"
+        eval "$(fnm env --shell bash)"
+    fi
 fi
 export RUSTUP_TOOLCHAIN=nightly
 
@@ -111,6 +119,7 @@ pass "Profiler started (pid=$PROFILER_PID)"
 
 log "Test 1: Triggering OOM kill (32MB cgroup limit)..."
 (
+    sleep 60
     # Clean up stale unit from previous runs
     systemctl reset-failed profiler-oom-test.scope 2>/dev/null || true
     systemctl stop profiler-oom-test.scope 2>/dev/null || true
@@ -129,7 +138,7 @@ except (MemoryError, Exception):
     log "OOM test process exited (expected)"
 ) &
 CHILD_PIDS+=($!)
-# Don't wait — let it run async
+# Don't wait - let it run async
 
 # ─── Test 2: Block I/O ──────────────────────────────────────────────────────
 #
@@ -140,7 +149,7 @@ log "Test 2: Generating block I/O (direct writes + sync reads)..."
 (
     TESTFILE="/tmp/profiler-test-blockio-$$"
 
-    # Direct write — bypasses page cache, hits disk
+    # Direct write - bypasses page cache, hits disk
     dd if=/dev/zero of="$TESTFILE" bs=1M count=64 oflag=direct conv=fsync 2>/dev/null
 
     # Drop caches to force reads from disk
@@ -198,7 +207,17 @@ log "Test 4: Running cargo check on profiler-common..."
 ) &
 CHILD_PIDS+=($!)
 
-log "Test 5: Running cargo build/test in mici for a basic test suite..."
+log "Test 5: Running npm ci in action-profiler for TCP traffic..."
+(
+    pushd "$PROFILER_DIR/.." > /dev/null
+    rm -rf node_modules
+    npm ci 2>&1 | tail -5
+    popd > /dev/null
+    log "npm ci test complete"
+) &
+CHILD_PIDS+=($!)
+
+log "Test 6: Running cargo build/test in mici for a basic test suite..."
 (
     pushd "$MICI_DIR" > /dev/null
 
@@ -247,6 +266,7 @@ OOM=$(grep -c '"oom_kill"' "$OUTPUT" || true)
 BLOCKIO=$(grep -c '"block_io"' "$OUTPUT" || true)
 SCHED=$(grep -c '"sched_latency"' "$OUTPUT" || true)
 METRICS=$(grep -c '"metrics"' "$OUTPUT" || true)
+TCP=$(grep -c '"tcp"' "$OUTPUT" || true)
 
 printf "  %-25s %s\n" "Total lines:" "$TOTAL"
 printf "  %-25s %s\n" "exec:" "$EXEC"
@@ -255,6 +275,7 @@ printf "  %-25s %s\n" "oom_kill:" "$OOM"
 printf "  %-25s %s\n" "block_io:" "$BLOCKIO"
 printf "  %-25s %s\n" "sched_latency:" "$SCHED"
 printf "  %-25s %s\n" "metrics:" "$METRICS"
+printf "  %-25s %s\n" "tcp:" "$TCP"
 echo ""
 
 # Validate we got at least some events of each type
@@ -265,7 +286,7 @@ check() {
     if [[ "$count" -gt 0 ]]; then
         pass "$label: $count events"
     else
-        fail "$label: 0 events — expected at least 1"
+        fail "$label: 0 events - expected at least 1"
         PASS=false
     fi
 }
@@ -276,11 +297,12 @@ check "oom_kill"              "$OOM"
 check "block_io"              "$BLOCKIO"
 check "sched_latency"         "$SCHED"
 check "metrics"               "$METRICS"
+check "tcp"                   "$TCP"
 
 echo ""
 if $PASS; then
     pass "All event types captured successfully!"
 else
-    fail "Some event types were missing — check the output above"
+    fail "Some event types were missing - check the output above"
     exit 1
 fi

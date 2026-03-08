@@ -17,7 +17,7 @@ pub fn aggregate_block_io(events: &[BlockIoEventRaw], t0: u64) -> Vec<BlockIoSum
         let entry = windows
             .entry(bucket)
             .or_insert_with(|| (Vec::new(), 0, Vec::new(), 0));
-        if e.rwbs.starts_with('R') {
+        if e.operation == "read" {
             entry.0.push(e.latency_ns);
             entry.1 += e.nr_sectors as u64;
         } else {
@@ -95,6 +95,159 @@ pub fn aggregate_sched_latency(events: &[SchedLatencyEventRaw], t0: u64) -> Vec<
 
     summaries.sort_by(|a, b| a.time_s.partial_cmp(&b.time_s).unwrap());
     summaries
+}
+
+pub fn pair_tcp_connections(events: &[TcpEventRaw], t0: u64) -> Vec<TcpConnectionOut> {
+    use std::collections::VecDeque;
+
+    use crate::ns_to_s;
+
+    if events.is_empty() {
+        return Vec::new();
+    }
+
+    // Key: (pid, daddr, dport) -- sport excluded because kernel clears it
+    // before CLOSE state transition (close events always have sport=0).
+    // VecDeque for FIFO matching when multiple connections to same endpoint.
+    let mut pending: HashMap<(u32, String, u16), VecDeque<&TcpEventRaw>> = HashMap::new();
+    let mut connections = Vec::new();
+
+    let max_time_ns = events.iter().map(|e| e.time_ns).max().unwrap_or(0);
+
+    for e in events {
+        let key = (e.pid, e.daddr.clone(), e.dport);
+
+        match e.tcp_type {
+            TcpType::Connect | TcpType::Accept => {
+                pending.entry(key).or_default().push_back(e);
+            }
+            TcpType::Close => {
+                let start_event = pending.get_mut(&key).and_then(|q| q.pop_front());
+                let (start_ns, connect_ms, sport) = if let Some(conn) = start_event {
+                    (conn.time_ns, conn.duration_ns as f64 / 1e6, conn.sport)
+                } else {
+                    // Close without matching connect -- started before profiler
+                    (e.time_ns.saturating_sub(e.duration_ns), 0.0, e.sport)
+                };
+                connections.push(TcpConnectionOut {
+                    start_s: ns_to_s(start_ns, t0),
+                    end_s: ns_to_s(e.time_ns, t0),
+                    duration_ms: e.duration_ns as f64 / 1e6,
+                    connect_ms,
+                    pid: e.pid,
+                    name: e.name.clone(),
+                    saddr: e.saddr.clone(),
+                    daddr: e.daddr.clone(),
+                    sport,
+                    dport: e.dport,
+                    endpoint: format!("{}:{}", e.daddr, e.dport),
+                    closed: true,
+                });
+            }
+        }
+    }
+
+    // Emit unpaired connects as open connections
+    for (_, queue) in pending {
+        for e in queue {
+            connections.push(TcpConnectionOut {
+                start_s: ns_to_s(e.time_ns, t0),
+                end_s: ns_to_s(max_time_ns, t0),
+                duration_ms: (max_time_ns - e.time_ns) as f64 / 1e6,
+                connect_ms: e.duration_ns as f64 / 1e6,
+                pid: e.pid,
+                name: e.name.clone(),
+                saddr: e.saddr.clone(),
+                daddr: e.daddr.clone(),
+                sport: e.sport,
+                dport: e.dport,
+                endpoint: format!("{}:{}", e.daddr, e.dport),
+                closed: false,
+            });
+        }
+    }
+
+    connections.sort_by(|a, b| a.start_s.partial_cmp(&b.start_s).unwrap());
+    connections
+}
+
+// Per-type window bucket: (latencies_ns, endpoint_counts)
+type TcpWindowBucket = (Vec<u64>, HashMap<String, (u64, u64)>);
+
+pub fn aggregate_tcp(events: &[TcpEventRaw], t0: u64) -> Vec<TcpSummaryOut> {
+    if events.is_empty() {
+        return Vec::new();
+    }
+
+    let window_ns: u64 = 5_000_000_000;
+    let window_s = 5.0;
+
+    // Per bucket: (connects, accepts, closes)
+    let mut windows: HashMap<u64, (TcpWindowBucket, TcpWindowBucket, TcpWindowBucket)> =
+        HashMap::new();
+
+    for e in events {
+        let bucket = (e.time_ns - t0) / window_ns;
+        let entry = windows.entry(bucket).or_insert_with(|| {
+            (
+                (Vec::new(), HashMap::new()),
+                (Vec::new(), HashMap::new()),
+                (Vec::new(), HashMap::new()),
+            )
+        });
+
+        let endpoint = format!("{}:{}", e.daddr, e.dport);
+        let type_bucket = match e.tcp_type {
+            TcpType::Connect => &mut entry.0,
+            TcpType::Accept => &mut entry.1,
+            TcpType::Close => &mut entry.2,
+        };
+
+        type_bucket.0.push(e.duration_ns);
+        let ep_entry = type_bucket.1.entry(endpoint).or_insert((0, 0));
+        ep_entry.0 += 1;
+        ep_entry.1 += e.duration_ns;
+    }
+
+    let mut summaries: Vec<TcpSummaryOut> = windows
+        .into_iter()
+        .map(|(bucket, (connects, accepts, closes))| TcpSummaryOut {
+            time_s: (bucket + 1) as f64 * window_s,
+            window_s,
+            connects: tcp_type_stats(connects),
+            accepts: tcp_type_stats(accepts),
+            closes: tcp_type_stats(closes),
+        })
+        .collect();
+
+    summaries.sort_by(|a, b| a.time_s.partial_cmp(&b.time_s).unwrap());
+    summaries
+}
+
+fn tcp_type_stats((mut latencies, by_endpoint): TcpWindowBucket) -> TcpTypeStats {
+    let count = latencies.len() as u64;
+    let latency = LatencyStatsOut::from_latencies(&mut latencies);
+
+    let mut top_endpoints: Vec<EndpointStats> = by_endpoint
+        .into_iter()
+        .map(|(endpoint, (count, total_ns))| EndpointStats {
+            endpoint,
+            count,
+            avg_ms: if count > 0 {
+                (total_ns as f64 / count as f64) / 1e6
+            } else {
+                0.0
+            },
+        })
+        .collect();
+    top_endpoints.sort_by(|a, b| b.count.cmp(&a.count));
+    top_endpoints.truncate(5);
+
+    TcpTypeStats {
+        count,
+        latency,
+        top_endpoints,
+    }
 }
 
 impl LatencyStatsOut {

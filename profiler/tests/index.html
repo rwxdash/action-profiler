@@ -188,9 +188,41 @@
             border-top: 1px solid #222;
         }
 
+        .chart-title {
+            padding: 6px 24px;
+            font-size: 13px;
+            color: #ccc;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1a1a1a;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #777;
+        }
+
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: #555 #1a1a1a;
+        }
+
         .chart-row {
             display: flex;
             width: 100%;
+            margin-bottom: 10px;
         }
 
         .chart-row>div {
@@ -398,7 +430,7 @@
                 <label style="font-size:13px;color:#aaa">Load JSONL file:
                     <input type="file" id="fileInput" accept=".jsonl,.json,.txt"></label>
             </div>
-            <div class="logo">ACTION PROFILER</div>
+            <!-- <div class="logo">ACTION PROFILER</div> -->
         </div>
 
         <!-- Summary Bar -->
@@ -412,6 +444,11 @@
                 <div class="card-label">Longest Task</div>
                 <div class="card-value" id="card-bottleneck-val">-</div>
                 <div class="card-detail" id="card-bottleneck-detail"></div>
+            </div>
+            <div class="summary-card" id="card-exits">
+                <div class="card-label">Non-zero Exits</div>
+                <div class="card-value" id="card-exits-val">-</div>
+                <div class="card-detail" id="card-exits-detail"></div>
             </div>
             <div class="summary-card anomaly" id="card-anomalies" style="cursor:pointer" onclick="toggleOomAlerts()">
                 <div class="card-label">Anomalies <span id="oom-toggle-hint"
@@ -435,11 +472,14 @@
         <!-- Filter Bar -->
         <div id="filter-bar">
             <div>
-                <label><input type="checkbox" id="hideWrappers" checked> Hide wrappers</label>
+                <label><input type="checkbox" id="hideWrappers"> Hide wrappers</label>
+            </div>
+            <div>
+                <label><input type="checkbox" id="focusOnClick" checked> Focus process on click</label>
             </div>
             <div>
                 <label>Min duration (ms):
-                    <input type="number" id="minDuration" value="100" min="0" step="1" style="width:80px"></label>
+                    <input type="number" id="minDuration" value="0" min="0" step="1" style="width:80px"></label>
             </div>
             <div>
                 <label>Sort by:
@@ -459,12 +499,24 @@
         <section class="tab-section" data-tab="health">
             <div class="section-title" id="metricsSection">System Metrics</div>
             <div class="chart-row" id="metricsRow1">
-                <div id="cpuChart" class="chart"></div>
-                <div id="memChart" class="chart"></div>
+                <div>
+                    <div class="chart-title">CPU Usage (%)</div>
+                    <div id="cpuChart" class="chart"></div>
+                </div>
+                <div>
+                    <div class="chart-title">Memory (MB)</div>
+                    <div id="memChart" class="chart"></div>
+                </div>
             </div>
             <div class="chart-row" id="metricsRow2">
-                <div id="diskChart" class="chart"></div>
-                <div id="netChart" class="chart"></div>
+                <div>
+                    <div class="chart-title">Disk I/O (MB/s)</div>
+                    <div id="diskChart" class="chart"></div>
+                </div>
+                <div>
+                    <div class="chart-title">Network I/O (MB/s)</div>
+                    <div id="netChart" class="chart"></div>
+                </div>
             </div>
         </section>
 
@@ -472,14 +524,49 @@
         <section class="tab-section" data-tab="ebpf">
             <div class="section-title" id="ebpfSection" style="display:none">eBPF Insights</div>
             <div class="chart-row" id="ebpfChartRow" style="display:none">
-                <div id="blockIoChart" class="chart"></div>
-                <div id="schedChart" class="chart"></div>
+                <div>
+                    <div class="chart-title" id="blockIoChartTitle"></div>
+                    <div id="blockIoChart" class="chart"></div>
+                </div>
+                <div>
+                    <div class="chart-title" id="schedChartTitle"></div>
+                    <div id="schedChart" class="chart"></div>
+                </div>
             </div>
 
             <div class="section-title" id="summarySection" style="display:none">eBPF Summaries (Aggregated)</div>
             <div class="chart-row" id="summaryChartRow" style="display:none">
-                <div id="blockIoSummaryChart" class="chart"></div>
-                <div id="schedSummaryChart" class="chart"></div>
+                <div>
+                    <div class="chart-title" id="blockIoSummaryChartTitle"></div>
+                    <div id="blockIoSummaryChart" class="chart"></div>
+                </div>
+                <div>
+                    <div class="chart-title" id="schedSummaryChartTitle"></div>
+                    <div id="schedSummaryChart" class="chart"></div>
+                </div>
+            </div>
+
+            <div class="section-title" id="tcpSection" style="display:none">TCP Connections <button id="dnsResolveBtn"
+                    onclick="onDnsResolve()"
+                    style="margin-left:12px;font-size:11px;padding:2px 10px;cursor:pointer;background:#333;color:#aaa;border:1px solid #555;border-radius:3px">Resolve
+                    hostnames</button></div>
+            <div class="chart-row" id="tcpChartRow" style="display:none; gap: 10px; padding: 0 24px;">
+                <div style="flex: 1;">
+                    <div class="chart-title" id="tcpLatencyChartTitle"></div>
+                    <div id="tcpLatencyChart" class="chart"></div>
+                </div>
+
+                <div id="tcpGanttWrapper"
+                    style="flex: 1; max-height: 350px; overflow-y: auto; overflow-x: hidden; border: 1px solid #222; border-radius: 8px;">
+                    <div class="chart-title" id="tcpGanttTitle"
+                        style="position: sticky; top: 0; z-index: 10; background: #1a1a2e;"></div>
+                    <div id="tcpGanttChart" class="chart"></div>
+                </div>
+            </div>
+
+            <div id="tcpTableSection"
+                style="display:none; padding: 0 24px; max-height: 300px; overflow-y: auto; margin-top: 16px; border-bottom: 1px solid #222;">
+                <div id="tcpTable"></div>
             </div>
         </section>
 
@@ -493,7 +580,7 @@
                 <div id="gantt-chart" class="chart"></div>
             </div>
             <div id="gantt-zoom" class="chart"></div>
-            <div class="section-title">Process Duration Scatter</div>
+            <div class="chart-title" id="scatterTitle">Process Duration Scatter</div>
             <div id="scatter" class="chart"></div>
             <div class="section-title">Process Table</div>
             <div id="table-container">
@@ -529,15 +616,45 @@
 
         // ── Helpers ─────────────────────────────────────────────────────────────────
 
-        function arrayMin(arr, fn) {
-            let min = Infinity;
-            for (const item of arr) { const v = fn(item); if (v < min) min = v; }
-            return min;
+        function escapeHtml(s) {
+            return (s || '').toString()
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
-        function arrayMax(arr, fn) {
-            let max = -Infinity;
-            for (const item of arr) { const v = fn(item); if (v > max) max = v; }
-            return max;
+
+        // DNS resolution cache: ip -> hostname (or null if unresolved)
+        const dnsCache = new Map();
+
+        function dnsLabel(ip) {
+            const host = dnsCache.get(ip);
+            return host || ip;
+        }
+
+        async function resolveIps(ips) {
+            const toResolve = ips.filter(ip => !dnsCache.has(ip) && /^\d+\.\d+\.\d+\.\d+$/.test(ip));
+            if (!toResolve.length) return false;
+
+            let resolved = false;
+            for (const ip of toResolve) {
+                try {
+                    const reversed = ip.split('.').reverse().join('.');
+                    const resp = await fetch(
+                        `https://cloudflare-dns.com/dns-query?name=${reversed}.in-addr.arpa&type=PTR`,
+                        { headers: { 'Accept': 'application/dns-json' } }
+                    );
+                    const data = await resp.json();
+                    const ptr = data.Answer && data.Answer[0] && data.Answer[0].data;
+                    if (ptr) {
+                        dnsCache.set(ip, ptr.replace(/\.$/, ''));
+                        resolved = true;
+                    } else {
+                        dnsCache.set(ip, null);
+                    }
+                } catch {
+                    dnsCache.set(ip, null);
+                }
+            }
+            return resolved;
         }
 
         function fmtTime(sec) {
@@ -562,6 +679,31 @@
             return kb + ' KB';
         }
 
+        function exitText(node) {
+            if (node.signal > 0) return `Killed (${node.signal_name || 'signal ' + node.signal})`;
+            if (node.exit_code != null) return node.exit_code === 0 ? 'Success (0)' : `Failed (${node.exit_code})`;
+            return 'Running';
+        }
+
+        function exitClass(node) {
+            if (node.signal > 0) return 'fail';
+            if (node.exit_code != null) return node.exit_code === 0 ? 'ok' : 'fail';
+            return 'running';
+        }
+
+        function isFailed(node) {
+            return (node.exit_code != null && node.exit_code !== 0) || (node.signal > 0);
+        }
+
+        // Assign unique IDs to tree nodes (PIDs can repeat due to re-exec, e.g. cargo shim → real cargo)
+        let _nextUid = 0;
+        function assignUids(nodes) {
+            for (const node of nodes) {
+                node._uid = _nextUid++;
+                if (node.children) assignUids(node.children);
+            }
+        }
+
         // ── State ───────────────────────────────────────────────────────────────────
 
         let allProcesses = [];
@@ -572,18 +714,26 @@
         let allSchedLatency = [];
         let allBlockIoSummaries = [];
         let allSchedSummaries = [];
+        let allTcp = [];
+        let allTcpConnections = [];
+        let allTcpSummaries = [];
         let allOomKills = [];
         let allStats = {};
 
-        let selectedPids = null; // Set<number> when a process is clicked, null = no selection
+        // Gantt tree state — keyed by node._uid (unique per tree node, not PID)
+        let expandedUids = new Set();
+        let focusedUids = null; // Set<number> — tree node UIDs in focused subtree
+        let focusedPids = null; // Set<number> — PIDs in focused subtree (for scatter/table)
+        let inspectedNode = null;
+        let ganttPage = 0;
 
+        // ECharts instances
         let scatterChart = null;
         let cpuChart = null, memChart = null, diskChart = null, netChart = null;
         let blockIoChart = null, schedChart = null;
         let blockIoSummaryChart = null, schedSummaryChart = null;
+        let tcpLatencyChart = null, tcpGanttChart = null;
         let ganttChart = null, ganttZoomChart = null;
-        let expandedPids = new Set();
-        let ganttPage = 0;
 
         // ── Tab Logic ───────────────────────────────────────────────────────────────
 
@@ -601,10 +751,10 @@
                     sec.classList.toggle('visible', sec.dataset.tab === tabName);
                 }
             });
-            // Resize visible charts after tab switch
             requestAnimationFrame(() => {
                 [scatterChart, cpuChart, memChart, diskChart, netChart,
-                    blockIoChart, schedChart, blockIoSummaryChart, schedSummaryChart, ganttChart, ganttZoomChart]
+                    blockIoChart, schedChart, blockIoSummaryChart, schedSummaryChart,
+                    tcpLatencyChart, tcpGanttChart, ganttChart, ganttZoomChart]
                     .forEach(c => c && c.resize());
             });
         }
@@ -629,6 +779,13 @@
         // ── Controls ────────────────────────────────────────────────────────────────
 
         document.getElementById('hideWrappers').addEventListener('change', render);
+        document.getElementById('focusOnClick').addEventListener('change', () => {
+            if (!document.getElementById('focusOnClick').checked) {
+                focusedUids = null;
+                focusedPids = null;
+                render();
+            }
+        });
         document.getElementById('minDuration').addEventListener('input', render);
         document.getElementById('sortBy').addEventListener('change', render);
         document.getElementById('searchInput').addEventListener('input', render);
@@ -645,6 +802,8 @@
             allProcesses = result.processes.map(p => ({
                 ...p,
                 exit_code: p.exit_code ?? null,
+                signal: p.signal ?? null,
+                signal_name: p.signal_name ?? null,
                 start_ms: p.start_s * 1000,
                 end_ms: p.end_s != null ? p.end_s * 1000 : null,
             }));
@@ -674,11 +833,33 @@
             allSchedLatency = result.sched_latency;
             allBlockIoSummaries = result.block_io_summaries;
             allSchedSummaries = result.sched_summaries;
+            allTcp = result.tcp || [];
+            allTcpConnections = result.tcp_connections || [];
+            allTcpSummaries = result.tcp_summaries || [];
             allOomKills = result.oom_kills;
 
+            // Assign unique IDs to tree nodes
+            _nextUid = 0;
+            assignUids(allProcessTree);
+
             // Reset state
-            selectedPids = null;
-            expandedPids = new Set();
+            inspectedNode = null;
+            expandedUids = new Set();
+            focusedUids = null;
+            focusedPids = null;
+
+            // Tree starts collapsed — user expands on click
+
+            // Dynamic min duration: 0 for small datasets, scales up to 100ms for large ones
+            const count = allProcesses.length;
+            let autoMinDuration;
+            if (count <= 300) {
+                autoMinDuration = 0;
+            } else {
+                // Linear from 0 at 300 to 100 at 2000+
+                autoMinDuration = Math.min(100, Math.round((count - 300) / 17));
+            }
+            document.getElementById('minDuration').value = autoMinDuration;
 
             // Show UI elements
             document.getElementById('summary-bar').style.display = 'flex';
@@ -686,9 +867,21 @@
             document.getElementById('filter-bar').style.display = 'flex';
             document.getElementById('inspector').style.display = 'none';
 
-            // Activate "all" tab and render
             activateTab('all');
             render();
+
+        }
+
+        window.onDnsResolve = onDnsResolve;
+        async function onDnsResolve() {
+            const btn = document.getElementById('dnsResolveBtn');
+            if (!allTcp.length) return;
+            btn.disabled = true;
+            btn.textContent = 'Resolving...';
+            const uniqueIps = [...new Set(allTcp.map(e => e.daddr))];
+            const changed = await resolveIps(uniqueIps);
+            if (changed) render();
+            btn.textContent = 'Resolved';
         }
 
         // ── Filtering & Sorting ─────────────────────────────────────────────────────
@@ -701,7 +894,7 @@
 
             let filtered = allProcesses.filter(p => {
                 if (hideWrappers && p.wrapper) return false;
-                if (p.duration_ms < minDuration) return false;
+                if (minDuration > 0 && p.duration_ms < minDuration) return false;
                 if (search && !p.display_name.toLowerCase().includes(search) &&
                     !p.filename.toLowerCase().includes(search) &&
                     !String(p.pid).includes(search)) return false;
@@ -717,23 +910,25 @@
 
         // ── Tree helpers ─────────────────────────────────────────────────────────────
 
-        function collectPids(node, set) {
-            set.add(node.pid);
+        function collectFocus(node, uidSet, pidSet) {
+            uidSet.add(node._uid);
+            pidSet.add(node.pid);
             if (node.children) {
-                for (const child of node.children) collectPids(child, set);
+                for (const child of node.children) collectFocus(child, uidSet, pidSet);
             }
         }
 
-        function clearSelection() {
-            selectedPids = null;
-            ganttPage = 0;
+        function closeInspector() {
+            inspectedNode = null;
+            focusedUids = null;
+            focusedPids = null;
             document.getElementById('inspector').style.display = 'none';
             render();
         }
-        window.clearSelection = clearSelection;
+        window.clearSelection = closeInspector; // for onclick in inspector close button
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && selectedPids) clearSelection();
+            if (e.key === 'Escape') closeInspector();
         });
 
         window._ganttPageNav = (delta) => {
@@ -744,10 +939,7 @@
         // ── Render All ──────────────────────────────────────────────────────────────
 
         function render() {
-            let filtered = getFiltered();
-            const scatterFiltered = selectedPids
-                ? filtered.filter(p => selectedPids.has(p.pid))
-                : filtered;
+            const filtered = getFiltered();
 
             const steps = [
                 ['SummaryBar', () => renderSummaryBar()],
@@ -755,8 +947,8 @@
                 ['MetricsCharts', () => renderMetricsCharts()],
                 ['EbpfCharts', () => renderEbpfCharts()],
                 ['Gantt', () => renderGantt()],
-                ['Scatter', () => renderScatter(scatterFiltered)],
-                ['Table', () => renderTable(scatterFiltered)],
+                ['Scatter', () => renderScatter(filtered)],
+                ['Table', () => renderTable(filtered)],
             ];
             for (const [name, fn] of steps) {
                 try { fn(); } catch (e) { console.error(`[render] ${name} failed:`, e); }
@@ -766,13 +958,12 @@
         // ── Summary Bar ─────────────────────────────────────────────────────────────
 
         function renderSummaryBar() {
-            // Total time
             const dur = allStats.duration_s || 0;
             document.getElementById('card-time-val').textContent = fmtTime(dur);
-            document.getElementById('card-time-detail').textContent =
-                `${allStats.process_count || 0} processes, ${allStats.total_events || 0} events`;
+            const detailParts = [`${allStats.process_count || 0} processes`, `${allStats.total_events || 0} events`];
+            if (allStats.tcp_count > 0) detailParts.push(`${allStats.tcp_count} TCP`);
+            document.getElementById('card-time-detail').textContent = detailParts.join(', ');
 
-            // Bottleneck — longest process
             if (allProcesses.length) {
                 const longest = allProcesses.reduce((a, b) => a.duration_ms > b.duration_ms ? a : b);
                 document.getElementById('card-bottleneck-val').textContent =
@@ -781,11 +972,19 @@
                     `PID ${longest.pid}`;
             }
 
-            // Anomalies
+            // Non-zero exits card (informational, not anomalous)
+            const nzExits = allAnomalies.failed_process_count || 0;
+            const exitsCard = document.getElementById('card-exits');
+            document.getElementById('card-exits-val').textContent = nzExits;
+            document.getElementById('card-exits-detail').textContent =
+                nzExits > 0 ? `of ${allStats.process_count || 0} total` : 'All exited 0';
+            // Subtle amber for non-zero, green for clean
+            document.getElementById('card-exits-val').style.color = nzExits > 0 ? '#ffa726' : '#22c55e';
+
+            // Anomalies card (real issues only: OOM, high sched latency)
             const parts = [];
             if (allAnomalies.oom_count > 0) parts.push(`${allAnomalies.oom_count} OOM Kill${allAnomalies.oom_count > 1 ? 's' : ''}`);
             if (allAnomalies.high_sched_latency) parts.push(`High CPU Wait (${allAnomalies.max_sched_latency_ms.toFixed(0)}ms)`);
-            if (allAnomalies.failed_process_count > 0) parts.push(`${allAnomalies.failed_process_count} Failed`);
 
             const anomCard = document.getElementById('card-anomalies');
             const oomHint = document.getElementById('oom-toggle-hint');
@@ -803,7 +1002,7 @@
             }
         }
 
-        // ── OOM Kill Alerts (collapsible) ───────────────────────────────────────────
+        // ── OOM Kill Alerts ─────────────────────────────────────────────────────────
 
         function toggleOomAlerts() {
             const el = document.getElementById('oomAlerts');
@@ -831,22 +1030,29 @@
       </div>
     </div>
   `).join('');
-            // Keep collapsed until user clicks the anomaly card
         }
 
         // ── System Metrics Charts ───────────────────────────────────────────────────
 
         function oomMarkLines() {
             if (!allOomKills.length || !allMetrics.length) return {};
+            const metricTimes = allMetrics.map(m => m.time_s);
             return {
                 markLine: {
                     silent: true,
                     symbol: 'none',
                     lineStyle: { color: '#ef4444', type: 'dashed', width: 2 },
-                    label: { formatter: p => 'OOM', color: '#ef4444', fontSize: 10 },
-                    data: allOomKills.map(oom => ({
-                        xAxis: fmtTime(oom.time_s),
-                    })),
+                    label: { formatter: () => 'OOM', color: '#ef4444', fontSize: 10, position: 'insideStartTop' },
+                    data: allOomKills.map(oom => {
+                        // Snap to nearest metric sample (category axis needs exact match)
+                        let closest = metricTimes[0];
+                        for (let i = 1; i < metricTimes.length; i++) {
+                            if (Math.abs(metricTimes[i] - oom.time_s) < Math.abs(closest - oom.time_s)) {
+                                closest = metricTimes[i];
+                            }
+                        }
+                        return { xAxis: fmtTime(closest) };
+                    }),
                 }
             };
         }
@@ -862,22 +1068,22 @@
             document.getElementById('metricsRow2').style.display = 'flex';
 
             const times = allMetrics.map(m => fmtTime(m.time_s));
-            renderCpuChart(times);
-            renderMemChart(times);
-            renderDiskChart(times);
-            renderNetChart(times);
-        }
 
-        function renderCpuChart(times) {
-            const el = document.getElementById('cpuChart');
-            el.style.height = '250px';
-            if (!cpuChart) { cpuChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => cpuChart.resize()); }
+            function initChart(id) {
+                const el = document.getElementById(id);
+                el.style.height = '350px';
+                const existing = { cpuChart, memChart, diskChart, netChart }[id.replace('Chart', 'Chart')];
+                if (existing) return existing;
+                const c = echarts.init(el, 'dark');
+                window.addEventListener('resize', () => c.resize());
+                return c;
+            }
 
+            cpuChart = cpuChart || initChart('cpuChart');
             cpuChart.setOption({
-                title: { text: 'CPU Usage (%)', left: 24, textStyle: { fontSize: 13 } },
                 tooltip: { trigger: 'axis' },
-                legend: { data: ['User', 'System'], right: 24, textStyle: { fontSize: 11 } },
-                grid: { left: 60, right: 24, top: 50, bottom: 30 },
+                legend: { data: ['User', 'System'], right: 24, top: 4, textStyle: { fontSize: 11 } },
+                grid: { left: 60, right: 24, top: 30, bottom: 30 },
                 xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
                 yAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
                 series: [
@@ -893,18 +1099,12 @@
                     },
                 ],
             }, true);
-        }
 
-        function renderMemChart(times) {
-            const el = document.getElementById('memChart');
-            el.style.height = '250px';
-            if (!memChart) { memChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => memChart.resize()); }
-
+            memChart = memChart || initChart('memChart');
             memChart.setOption({
-                title: { text: 'Memory (MB)', left: 24, textStyle: { fontSize: 13 } },
                 tooltip: { trigger: 'axis' },
-                legend: { data: ['Used', 'Available'], right: 24, textStyle: { fontSize: 11 } },
-                grid: { left: 60, right: 24, top: 50, bottom: 30 },
+                legend: { data: ['Used', 'Available'], right: 24, top: 4, textStyle: { fontSize: 11 } },
+                grid: { left: 60, right: 24, top: 30, bottom: 30 },
                 xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
                 yAxis: {
                     type: 'value',
@@ -924,18 +1124,12 @@
                     },
                 ],
             }, true);
-        }
 
-        function renderDiskChart(times) {
-            const el = document.getElementById('diskChart');
-            el.style.height = '250px';
-            if (!diskChart) { diskChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => diskChart.resize()); }
-
+            diskChart = diskChart || initChart('diskChart');
             diskChart.setOption({
-                title: { text: 'Disk I/O (MB/s)', left: 24, textStyle: { fontSize: 13 } },
                 tooltip: { trigger: 'axis' },
-                legend: { data: ['Read', 'Write'], right: 24, textStyle: { fontSize: 11 } },
-                grid: { left: 60, right: 24, top: 50, bottom: 30 },
+                legend: { data: ['Read', 'Write'], right: 24, top: 4, textStyle: { fontSize: 11 } },
+                grid: { left: 60, right: 24, top: 30, bottom: 30 },
                 xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
                 yAxis: { type: 'value', axisLabel: { formatter: '{value}' } },
                 series: [
@@ -943,18 +1137,12 @@
                     { name: 'Write', type: 'bar', data: allMetrics.map(m => +m.disk_write.toFixed(2)), itemStyle: { color: '#ff7043' } },
                 ],
             }, true);
-        }
 
-        function renderNetChart(times) {
-            const el = document.getElementById('netChart');
-            el.style.height = '250px';
-            if (!netChart) { netChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => netChart.resize()); }
-
+            netChart = netChart || initChart('netChart');
             netChart.setOption({
-                title: { text: 'Network I/O (MB/s)', left: 24, textStyle: { fontSize: 13 } },
                 tooltip: { trigger: 'axis' },
-                legend: { data: ['RX', 'TX'], right: 24, textStyle: { fontSize: 11 } },
-                grid: { left: 60, right: 24, top: 50, bottom: 30 },
+                legend: { data: ['RX', 'TX'], right: 24, top: 4, textStyle: { fontSize: 11 } },
+                grid: { left: 60, right: 24, top: 30, bottom: 30 },
                 xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
                 yAxis: { type: 'value', axisLabel: { formatter: '{value}' } },
                 series: [
@@ -990,15 +1178,39 @@
                 renderBlockIoSummaryChart();
                 renderSchedSummaryChart();
             }
+
+            const hasTcpData = allTcp.length > 0;
+            document.getElementById('tcpSection').style.display = hasTcpData ? '' : 'none';
+            document.getElementById('tcpChartRow').style.display = hasTcpData ? 'flex' : 'none';
+            document.getElementById('tcpTableSection').style.display = hasTcpData ? '' : 'none';
+            if (hasTcpData) {
+                renderTcpLatencyChart();
+                renderTcpGanttChart();
+                renderTcpTable();
+            }
+        }
+
+        function oomScatterLines() {
+            if (!allOomKills.length) return {};
+            return {
+                markLine: {
+                    silent: true, symbol: 'none',
+                    lineStyle: { color: '#ef4444', type: 'dashed', width: 2 },
+                    label: { formatter: 'OOM', color: '#ef4444', fontSize: 10, position: 'insideStartTop' },
+                    data: allOomKills.map(oom => ({ xAxis: oom.time_s })),
+                }
+            };
         }
 
         function renderBlockIoChart() {
             const el = document.getElementById('blockIoChart');
-            el.style.height = '300px';
+            el.style.height = '350px';
             if (!blockIoChart) { blockIoChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => blockIoChart.resize()); }
 
+            const blockIoTitleEl = document.getElementById('blockIoChartTitle');
             if (!allBlockIo.length) {
-                blockIoChart.setOption({ title: { text: 'Block I/O Latency (no data)', left: 24, textStyle: { fontSize: 13, color: '#666' } } }, true);
+                blockIoTitleEl.textContent = 'Block I/O Latency (no data)';
+                blockIoTitleEl.style.color = '#666';
                 return;
             }
 
@@ -1008,26 +1220,15 @@
                 data = data.filter((_, i) => i % step === 0);
             }
 
-            const readData = data.filter(e => e.isRead).map(e => [e.time_s, e.latency_ms]);
-            const writeData = data.filter(e => !e.isRead).map(e => [e.time_s, e.latency_ms]);
-
-            const oomLines = allOomKills.length ? {
-                markLine: {
-                    silent: true, symbol: 'none',
-                    lineStyle: { color: '#ef4444', type: 'dashed', width: 2 },
-                    label: { formatter: 'OOM', color: '#ef4444', fontSize: 10 },
-                    data: allOomKills.map(oom => ({ xAxis: oom.time_s })),
-                }
-            } : {};
-
+            blockIoTitleEl.textContent = `Block I/O Latency (${allBlockIo.length} events)`;
+            blockIoTitleEl.style.color = '';
             blockIoChart.setOption({
-                title: { text: `Block I/O Latency (${allBlockIo.length} events)`, left: 24, textStyle: { fontSize: 13 } },
                 tooltip: {
                     trigger: 'item',
-                    formatter: p => `${p.seriesName}<br>T+${fmtTime(p.data[0])}<br>Latency: ${p.data[1].toFixed(2)}ms`
+                    formatter: p => `${p.seriesName}<br>T+${fmtTime(p.data[0])}<br>Latency: ${p.data[1].toFixed(2)}ms<br>${p.data[3]} (PID ${p.data[2]})`
                 },
-                legend: { data: ['Read', 'Write'], right: 24, textStyle: { fontSize: 11 } },
-                grid: { left: 80, right: 24, top: 50, bottom: 50 },
+                legend: { data: ['Read', 'Write'], right: 24, top: 4, textStyle: { fontSize: 11 } },
+                grid: { left: 80, right: 24, top: 30, bottom: 50 },
                 xAxis: {
                     type: 'value', name: 'Time', nameLocation: 'middle', nameGap: 30,
                     axisLabel: { formatter: v => fmtTime(v) }
@@ -1039,12 +1240,14 @@
                 dataZoom: [{ type: 'inside' }, { type: 'slider', bottom: 10, height: 20 }],
                 series: [
                     {
-                        name: 'Read', type: 'scatter', data: readData, symbolSize: 3,
-                        itemStyle: { color: '#4fc3f7', opacity: 0.6 }, ...oomLines
+                        name: 'Read', type: 'scatter',
+                        data: data.filter(e => e.isRead).map(e => [e.time_s, e.latency_ms, e.pid, e.name]),
+                        symbolSize: 3, itemStyle: { color: '#4fc3f7', opacity: 0.6 }, ...oomScatterLines()
                     },
                     {
-                        name: 'Write', type: 'scatter', data: writeData, symbolSize: 3,
-                        itemStyle: { color: '#ff7043', opacity: 0.6 }
+                        name: 'Write', type: 'scatter',
+                        data: data.filter(e => !e.isRead).map(e => [e.time_s, e.latency_ms, e.pid, e.name]),
+                        symbolSize: 3, itemStyle: { color: '#ff7043', opacity: 0.6 }
                     },
                 ],
             }, true);
@@ -1052,11 +1255,13 @@
 
         function renderSchedChart() {
             const el = document.getElementById('schedChart');
-            el.style.height = '300px';
+            el.style.height = '350px';
             if (!schedChart) { schedChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => schedChart.resize()); }
 
+            const schedTitleEl = document.getElementById('schedChartTitle');
             if (!allSchedLatency.length) {
-                schedChart.setOption({ title: { text: 'Scheduler Latency (no data)', left: 24, textStyle: { fontSize: 13, color: '#666' } } }, true);
+                schedTitleEl.textContent = 'Scheduler Latency (no data)';
+                schedTitleEl.style.color = '#666';
                 return;
             }
 
@@ -1068,28 +1273,19 @@
             }
             const topNames = [...byName.entries()]
                 .sort((a, b) => Math.max(...b[1].map(e => e.latency_ms)) - Math.max(...a[1].map(e => e.latency_ms)))
-                .slice(0, 10)
                 .map(e => e[0]);
 
             const colors = ['#4fc3f7', '#ff7043', '#66bb6a', '#ab47bc', '#ffa726', '#26a69a', '#ef5350', '#78909c', '#ffca28', '#8d6e63'];
 
-            const oomLines = allOomKills.length ? {
-                markLine: {
-                    silent: true, symbol: 'none',
-                    lineStyle: { color: '#ef4444', type: 'dashed', width: 2 },
-                    label: { formatter: 'OOM', color: '#ef4444', fontSize: 10 },
-                    data: allOomKills.map(oom => ({ xAxis: oom.time_s })),
-                }
-            } : {};
-
+            schedTitleEl.textContent = `Scheduler Latency (${allSchedLatency.length} events, >5ms)`;
+            schedTitleEl.style.color = '';
             schedChart.setOption({
-                title: { text: `Scheduler Latency (${allSchedLatency.length} events, >5ms)`, left: 24, textStyle: { fontSize: 13 } },
                 tooltip: {
                     trigger: 'item',
-                    formatter: p => `${p.seriesName}<br>T+${fmtTime(p.data[0])}<br>Latency: ${p.data[1].toFixed(1)}ms`
+                    formatter: p => `${p.seriesName} (PID ${p.data[2]})<br>T+${fmtTime(p.data[0])}<br>Latency: ${p.data[1].toFixed(1)}ms`
                 },
-                legend: { data: topNames, right: 24, textStyle: { fontSize: 10 }, type: 'scroll' },
-                grid: { left: 80, right: 24, top: 50, bottom: 50 },
+                legend: { data: topNames, right: 24, top: 4, textStyle: { fontSize: 10 }, type: 'scroll', width: '50%' },
+                grid: { left: 80, right: 24, top: 30, bottom: 50 },
                 xAxis: {
                     type: 'value', name: 'Time', nameLocation: 'middle', nameGap: 30,
                     axisLabel: { formatter: v => fmtTime(v) }
@@ -1102,10 +1298,10 @@
                 series: topNames.map((name, i) => ({
                     name,
                     type: 'scatter',
-                    data: (byName.get(name) || []).map(e => [e.time_s, e.latency_ms]),
+                    data: (byName.get(name) || []).map(e => [e.time_s, e.latency_ms, e.pid]),
                     symbolSize: 5,
                     itemStyle: { color: colors[i % colors.length], opacity: 0.7 },
-                    ...(i === 0 ? oomLines : {}),
+                    ...(i === 0 ? oomScatterLines() : {}),
                 })),
             }, true);
         }
@@ -1114,19 +1310,22 @@
 
         function renderBlockIoSummaryChart() {
             const el = document.getElementById('blockIoSummaryChart');
-            el.style.height = '300px';
+            el.style.height = '350px';
             if (!blockIoSummaryChart) { blockIoSummaryChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => blockIoSummaryChart.resize()); }
 
+            const bioSumTitleEl = document.getElementById('blockIoSummaryChartTitle');
             if (!allBlockIoSummaries.length) {
-                blockIoSummaryChart.setOption({ title: { text: 'Block I/O Summary (no data)', left: 24, textStyle: { fontSize: 13, color: '#666' } } }, true);
+                bioSumTitleEl.textContent = 'Block I/O Summary (no data)';
+                bioSumTitleEl.style.color = '#666';
                 return;
             }
 
             const times = allBlockIoSummaries.map(s => fmtTime(s.time_s));
             const totalEvents = allBlockIoSummaries.reduce((s, e) => s + e.reads.count + e.writes.count, 0);
 
+            bioSumTitleEl.textContent = `Block I/O Latency (${totalEvents} events aggregated)`;
+            bioSumTitleEl.style.color = '';
             blockIoSummaryChart.setOption({
-                title: { text: `Block I/O Latency (${totalEvents} events aggregated)`, left: 24, textStyle: { fontSize: 13 } },
                 tooltip: {
                     trigger: 'axis',
                     formatter: params => {
@@ -1142,8 +1341,8 @@
                         return html;
                     }
                 },
-                legend: { data: ['Read p50', 'Read p99', 'Write p50', 'Write p99'], right: 24, textStyle: { fontSize: 10 } },
-                grid: { left: 80, right: 24, top: 50, bottom: 30 },
+                legend: { data: ['Read p50', 'Read p99', 'Write p50', 'Write p99'], right: 24, top: 4, textStyle: { fontSize: 10 } },
+                grid: { left: 80, right: 24, top: 30, bottom: 30 },
                 xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
                 yAxis: {
                     type: 'log', name: 'Latency', min: 0.001,
@@ -1180,19 +1379,22 @@
 
         function renderSchedSummaryChart() {
             const el = document.getElementById('schedSummaryChart');
-            el.style.height = '300px';
+            el.style.height = '350px';
             if (!schedSummaryChart) { schedSummaryChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => schedSummaryChart.resize()); }
 
+            const schedSumTitleEl = document.getElementById('schedSummaryChartTitle');
             if (!allSchedSummaries.length) {
-                schedSummaryChart.setOption({ title: { text: 'Scheduler Latency Summary (no data)', left: 24, textStyle: { fontSize: 13, color: '#666' } } }, true);
+                schedSumTitleEl.textContent = 'Scheduler Latency Summary (no data)';
+                schedSumTitleEl.style.color = '#666';
                 return;
             }
 
             const times = allSchedSummaries.map(s => fmtTime(s.time_s));
             const totalEvents = allSchedSummaries.reduce((s, e) => s + e.count, 0);
 
+            schedSumTitleEl.textContent = `Scheduler Latency (${totalEvents} events aggregated)`;
+            schedSumTitleEl.style.color = '';
             schedSummaryChart.setOption({
-                title: { text: `Scheduler Latency (${totalEvents} events aggregated)`, left: 24, textStyle: { fontSize: 13 } },
                 tooltip: {
                     trigger: 'axis',
                     formatter: params => {
@@ -1211,8 +1413,8 @@
                         return html;
                     }
                 },
-                legend: { data: ['p50', 'p95', 'p99', 'max', 'count'], right: 24, textStyle: { fontSize: 10 } },
-                grid: { left: 80, right: 60, top: 50, bottom: 30 },
+                legend: { data: ['p50', 'p95', 'p99', 'max', 'count'], right: 80, top: 4, textStyle: { fontSize: 10 } },
+                grid: { left: 80, right: 60, top: 30, bottom: 30 },
                 xAxis: { type: 'category', data: times, axisLabel: { fontSize: 10 } },
                 yAxis: [
                     {
@@ -1257,22 +1459,228 @@
                     },
                 ],
             }, true);
+
+            schedSummaryChart.off('legendselectchanged');
+            schedSummaryChart.on('legendselectchanged', function (params) {
+                const countVisible = params.selected['count'];
+                schedSummaryChart.setOption({
+                    yAxis: [
+                        {},
+                        { name: countVisible ? 'Count' : '', axisLabel: { show: countVisible }, axisTick: { show: countVisible } },
+                    ],
+                });
+            });
+        }
+
+        // ── TCP Charts ────────────────────────────────────────────────────────────────
+
+        function renderTcpLatencyChart() {
+            const el = document.getElementById('tcpLatencyChart');
+            el.style.height = '350px';
+            if (!tcpLatencyChart) { tcpLatencyChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => tcpLatencyChart.resize()); }
+
+            // Only plot connect events (accept has no meaningful latency,
+            // close duration_ms is connection lifetime -- different metric)
+            const tcpLatTitleEl = document.getElementById('tcpLatencyChartTitle');
+            const connects = allTcp.filter(e => e.tcp_type === 'connect');
+            if (!connects.length) {
+                tcpLatTitleEl.textContent = 'TCP Connect Latency (no data)';
+                tcpLatTitleEl.style.color = '#666';
+                return;
+            }
+
+            tcpLatTitleEl.textContent = `TCP Connect Latency (${connects.length} events)`;
+            tcpLatTitleEl.style.color = '';
+            tcpLatencyChart.setOption({
+                tooltip: {
+                    trigger: 'item',
+                    formatter: p => {
+                        const d = p.data;
+                        // d[5] is raw daddr for DNS lookup
+                        const host = dnsLabel(d[5] || '');
+                        const ep = host !== d[5] ? `${host} (${d[2]})` : d[2];
+                        return `<b>${d[3]}</b> (PID ${d[4]})<br>` +
+                            `Endpoint: ${ep}<br>` +
+                            `Latency: ${d[1].toFixed(2)}ms<br>` +
+                            `T+${fmtTime(d[0])}`;
+                    }
+                },
+                grid: { left: 80, right: 24, top: 10, bottom: 24 },
+                xAxis: { type: 'value', axisLabel: { formatter: v => fmtTime(v) } },
+                yAxis: {
+                    type: 'log', name: 'Latency (ms)',
+                    axisLabel: { formatter: v => v >= 1 ? v.toFixed(0) + 'ms' : v.toFixed(2) + 'ms' },
+                    min: function (value) { return Math.max(0.01, Math.pow(10, Math.floor(Math.log10(value.min)))); },
+                },
+                series: [{
+                    type: 'scatter',
+                    symbolSize: 6,
+                    // data: [time_s, latency_ms, endpoint, name, pid, daddr]
+                    data: connects.map(e => [e.time_s, e.duration_ms, e.endpoint, e.name, e.pid, e.daddr]),
+                    itemStyle: { color: '#4fc3f7', opacity: 0.7 },
+                    ...oomScatterLines(),
+                }],
+            }, true);
+        }
+
+        function renderTcpGanttChart() {
+            const el = document.getElementById('tcpGanttChart');
+            const titleEl = document.getElementById('tcpGanttTitle');
+            if (!allTcpConnections.length) {
+                titleEl.textContent = 'TCP Connection Timeline (no data)';
+                titleEl.style.color = '#666';
+                el.style.height = '50px';
+                if (!tcpGanttChart) { tcpGanttChart = echarts.init(el, 'dark'); window.addEventListener('resize', () => tcpGanttChart.resize()); }
+                tcpGanttChart.setOption({}, true);
+                return;
+            }
+            titleEl.textContent = `TCP Connections (${allTcpConnections.length} total)`;
+            titleEl.style.color = '#ccc';
+
+            // One row per connection, labeled as "endpoint - name (PID)"
+            const categories = allTcpConnections.map(c =>
+                `${dnsLabel(c.daddr)}:${c.dport} - ${c.name}`
+            );
+
+            // Color by endpoint
+            const palette = ['#4fc3f7', '#66bb6a', '#ffa726', '#ab47bc', '#ef5350', '#26a69a', '#78909c'];
+            const endpointColors = new Map();
+            let colorIdx = 0;
+            for (const c of allTcpConnections) {
+                if (!endpointColors.has(c.endpoint)) {
+                    endpointColors.set(c.endpoint, palette[colorIdx++ % palette.length]);
+                }
+            }
+
+            const barData = [];
+            const barMeta = [];
+            for (let i = 0; i < allTcpConnections.length; i++) {
+                const c = allTcpConnections[i];
+                barData.push({ value: [i, c.start_s, c.end_s, barMeta.length] });
+                barMeta.push(c);
+            }
+
+            const ROW_H = 28;
+            const chartH = Math.max(350, allTcpConnections.length * ROW_H + 60);
+            el.style.height = chartH + 'px';
+
+            if (tcpGanttChart) { tcpGanttChart.dispose(); tcpGanttChart = null; }
+            tcpGanttChart = echarts.init(el, 'dark');
+            window.addEventListener('resize', () => tcpGanttChart && tcpGanttChart.resize());
+
+            tcpGanttChart.setOption({
+                tooltip: {
+                    trigger: 'item',
+                    formatter: p => {
+                        const c = barMeta[p.data.value[3]];
+                        if (!c) return '';
+                        return `<b>${dnsLabel(c.daddr)}:${c.dport}</b><br>` +
+                            `Process: ${c.name} (PID ${c.pid})<br>` +
+                            `Connect latency: ${c.connect_ms.toFixed(2)}ms<br>` +
+                            `Duration: ${fmtMs(c.duration_ms)}<br>` +
+                            `${c.saddr}:${c.sport} -> ${c.daddr}:${c.dport}<br>` +
+                            (c.closed ? '' : '<span style="color:#ffa726">Connection still open</span>');
+                    }
+                },
+                grid: { left: 200, right: 24, top: 10, bottom: 24 },
+                xAxis: { type: 'value', axisLabel: { formatter: v => fmtTime(v) } },
+                yAxis: {
+                    type: 'category',
+                    data: categories,
+                    inverse: true,
+                    axisLabel: { fontSize: 10, width: 180, overflow: 'truncate' },
+                },
+                dataZoom: [{ type: 'inside', xAxisIndex: 0 }],
+                series: [{
+                    type: 'custom',
+                    renderItem: (params, api) => {
+                        try {
+                            const catIdx = api.value(0);
+                            const startVal = api.value(1);
+                            const endVal = api.value(2);
+                            const metaIdx = api.value(3);
+                            const meta = barMeta[metaIdx];
+
+                            const start = api.coord([startVal, catIdx]);
+                            const end = api.coord([endVal, catIdx]);
+                            const bandWidth = api.size([0, 1])[1];
+                            const h = Math.min(Math.max(bandWidth * 0.6, 4), ROW_H * 0.7);
+                            const color = endpointColors.get(meta.endpoint) || '#666';
+
+                            return {
+                                type: 'rect',
+                                shape: {
+                                    x: start[0],
+                                    y: start[1] - h / 2,
+                                    width: Math.max(end[0] - start[0], 2),
+                                    height: h,
+                                },
+                                style: {
+                                    fill: color,
+                                    opacity: meta && !meta.closed ? 0.4 : 0.7,
+                                    stroke: meta && !meta.closed ? color : undefined,
+                                    lineWidth: meta && !meta.closed ? 1 : 0,
+                                    lineDash: meta && !meta.closed ? [4, 2] : undefined,
+                                },
+                            };
+                        } catch (e) { return null; }
+                    },
+                    encode: { x: [1, 2], y: 0 },
+                    data: barData,
+                }],
+            }, true);
+        }
+
+        function renderTcpTable() {
+            const el = document.getElementById('tcpTable');
+            if (!allTcp.length) { el.innerHTML = ''; return; }
+
+            // CHALLENGE: Implement column sorting.
+            //
+            // The process table uses a sortBy dropdown. For the TCP table,
+            // you could add clickable column headers that toggle sort direction.
+            //
+            // Hints:
+            // - Store current sort column and direction in a variable
+            // - Re-render the table on header click
+            // - Use unicode arrows (ASC/DESC) in the header to show sort state
+
+            const typeColor = { connect: '#66bb6a', accept: '#4fc3f7', close: '#ef5350' };
+
+            let html = `<table style="width:100%;border-collapse:collapse;font-size:12px;color:#ccc">
+                <thead><tr style="border-bottom:1px solid #444;text-align:left">
+                    <th style="padding:6px">Time</th>
+                    <th style="padding:6px">Type</th>
+                    <th style="padding:6px">Process</th>
+                    <th style="padding:6px">Endpoint</th>
+                    <th style="padding:6px">Source</th>
+                    <th style="padding:6px;text-align:right">Duration</th>
+                </tr></thead><tbody>`;
+
+            for (const e of allTcp) {
+                const color = typeColor[e.tcp_type] || '#999';
+                html += `<tr style="border-bottom:1px solid #333">
+                    <td style="padding:4px 6px">${fmtTime(e.time_s)}</td>
+                    <td style="padding:4px 6px"><span style="color:${color};font-weight:bold">${e.tcp_type}</span></td>
+                    <td style="padding:4px 6px">${escapeHtml(e.name)} <span style="color:#666">(${e.pid})</span></td>
+                    <td style="padding:4px 6px" title="${escapeHtml(e.endpoint)}">${escapeHtml(dnsLabel(e.daddr))}:${e.dport}</td>
+                    <td style="padding:4px 6px;color:#888">${escapeHtml(e.saddr)}:${e.sport}</td>
+                    <td style="padding:4px 6px;text-align:right">${e.duration_ms > 0 ? fmtMs(e.duration_ms) : '-'}</td>
+                </tr>`;
+            }
+
+            html += '</tbody></table>';
+            el.innerHTML = html;
         }
 
         // ── Inspector Panel ──────────────────────────────────────────────────────────
 
         function renderInspector(node) {
+            inspectedNode = node;
             const el = document.getElementById('inspector');
             el.style.display = 'block';
 
-            const exitText = node.exit_code != null
-                ? (node.exit_code === 0 ? 'Success (0)' : `Failed (${node.exit_code})`)
-                : 'Running';
-            const exitClass = node.exit_code != null
-                ? (node.exit_code === 0 ? 'ok' : 'fail')
-                : 'running';
-
-            const cmdLine = (node.filename || '') + (node.args && node.args.length > 1 ? ' ' + node.args.slice(1).join(' ') : '');
+            const cmdLine = (node.filename || '') + (node.args && node.args.length > 0 ? ' ' + node.args.join(' ') : '');
             const ebpf = node.ebpf || {};
             let ebpfHtml = '';
 
@@ -1298,13 +1706,22 @@
                     <div class="stat-detail">max ${ebpf.block_io_write_max_ms.toFixed(2)}ms &middot; ${ebpf.block_io_write_count} ops</div>
                 </div>`;
             }
+            if (ebpf.tcp_connect_count > 0) {
+                ebpfHtml += `<div class="ebpf-stat">
+                    <div class="stat-label">TCP Connections</div>
+                    <div class="stat-value">${ebpf.tcp_connect_count} connects</div>
+                    <div class="stat-detail">avg ${ebpf.tcp_connect_avg_ms.toFixed(2)}ms &middot; max ${ebpf.tcp_connect_max_ms.toFixed(2)}ms${ebpf.tcp_active_connections > 0 ? ` &middot; ${ebpf.tcp_active_connections} still open` : ''}</div>
+                </div>`;
+            }
             if (!ebpfHtml) {
                 ebpfHtml = '<div style="color:#999;font-size:12px">No eBPF data for this process</div>';
             }
 
             const name = node.display_name || node.name || 'Unknown';
             const dur = node.duration_ms;
-            const startS = node.start_s != null ? node.start_s : (node.start_ms != null ? node.start_ms / 1000 : null);
+            const span = node.span_ms || dur;
+            const startS = node.start_s;
+            const spanInfo = span > dur + 1 ? ` &middot; Span: <b style="color:#1a1a2e">${fmtMs(span)}</b>` : '';
 
             el.innerHTML = `
                 <button class="inspector-close" onclick="clearSelection()">&#x2715; Close</button>
@@ -1312,10 +1729,10 @@
                     <div>
                         <div class="inspector-title">${name} <span style="color:#888;font-weight:normal">(PID ${node.pid})</span></div>
                     </div>
-                    <div class="inspector-exit ${exitClass}">${exitText}</div>
+                    <div class="inspector-exit ${exitClass(node)}">${exitText(node)}</div>
                 </div>
                 <div class="inspector-cmd">${cmdLine}</div>
-                <div style="font-size:12px;color:#555;margin-bottom:4px">Duration: <b style="color:#1a1a2e">${fmtMs(dur)}</b>${startS != null ? ' &middot; Start: T+' + fmtTime(startS) : ''}
+                <div style="font-size:12px;color:#555;margin-bottom:4px">Duration: <b style="color:#1a1a2e">${fmtMs(dur)}</b>${spanInfo}${startS != null ? ' &middot; Start: T+' + fmtTime(startS) : ''}
                     ${node.on_critical_path ? ' &middot; <span style="color:#d84315">Critical Path</span>' : ''}</div>
                 <div style="font-size:12px;color:#555;margin-bottom:8px">Children: ${node.children ? node.children.length : 0}</div>
                 <div style="font-size:11px;color:#777;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">eBPF Correlated Insights</div>
@@ -1329,7 +1746,7 @@
             const rows = [];
             for (const node of nodes) {
                 const hasChildren = node.children && node.children.length > 0;
-                const isExpanded = expandedPids.has(node.pid);
+                const isExpanded = expandedUids.has(node._uid);
                 rows.push({ node, depth, hasChildren, isExpanded });
                 if (hasChildren && isExpanded) {
                     rows.push(...getVisibleRows(node.children, depth + 1));
@@ -1350,36 +1767,7 @@
             }
             wrapper.style.display = '';
 
-            // Determine the tree source: if selectedPids is set, find the
-            // selected root node and show its subtree; otherwise show full tree
-            let treeSource = allProcessTree;
-            if (selectedPids && selectedPids.size > 0) {
-                // Find the root of the selected subtree (the node whose pid
-                // is in selectedPids and whose parent is NOT in selectedPids)
-                const findSelectedRoot = (nodes) => {
-                    for (const node of nodes) {
-                        if (selectedPids.has(node.pid)) {
-                            // Check if this is the top-most selected node
-                            // (its parent wouldn't be in the nodes we're iterating from allProcessTree root)
-                            return node;
-                        }
-                        if (node.children) {
-                            const found = findSelectedRoot(node.children);
-                            if (found) return found;
-                        }
-                    }
-                    return null;
-                };
-                const selectedRoot = findSelectedRoot(allProcessTree);
-                if (selectedRoot) {
-                    // Auto-expand the selected root so its children are visible
-                    expandedPids.add(selectedRoot.pid);
-                    treeSource = [selectedRoot];
-                }
-            }
-
-            // Apply filters by pruning the tree bottom-up: a parent is kept
-            // only if it passes the filter itself or has a descendant that does.
+            // Apply tree filters (prune nodes that don't match)
             const hideWrappers = document.getElementById('hideWrappers').checked;
             const minDuration = parseFloat(document.getElementById('minDuration').value) || 0;
             const search = document.getElementById('searchInput').value.toLowerCase().trim();
@@ -1408,14 +1796,15 @@
                 return result;
             }
 
-            const filteredTree = needsFilter ? pruneTree(treeSource) : treeSource;
+            const filteredTree = needsFilter ? pruneTree(allProcessTree) : allProcessTree;
             let rows = getVisibleRows(filteredTree, 0);
 
             if (!rows.length) {
                 container.style.height = '60px';
                 if (ganttChart) { ganttChart.dispose(); ganttChart = null; }
                 if (ganttZoomChart) { ganttZoomChart.dispose(); ganttZoomChart = null; }
-                container.innerHTML = '<div style="color:#666;padding:20px;text-align:center">No matching processes</div>';
+                const hint = minDuration > 0 ? ` Try lowering "Min duration" filter (currently ${minDuration}ms).` : '';
+                container.innerHTML = `<div style="color:#666;padding:20px;text-align:center">No matching processes.${hint}</div>`;
                 zoomEl.style.display = 'none';
                 truncEl.style.display = 'none';
                 return;
@@ -1444,7 +1833,7 @@
             }
             zoomEl.style.display = '';
 
-            // Compute time range from visible rows, but origin from full tree
+            // Compute time range from visible rows
             let minTime = Infinity, maxTime = -Infinity;
             for (const r of rows) {
                 const start = r.node.start_s;
@@ -1452,7 +1841,6 @@
                 if (start < minTime) minTime = start;
                 if (end > maxTime) maxTime = end;
             }
-            // Global origin: earliest start across all processes
             let timeOrigin = Infinity;
             for (const p of allProcesses) {
                 if (p.start_s < timeOrigin) timeOrigin = p.start_s;
@@ -1470,21 +1858,24 @@
                 return indent + icon + name + count;
             });
 
-            // Bar data and metadata
+            // Bar data: each process gets a bar from start_s to end_s
             const barData = [];
             const barMeta = [];
             rows.forEach((r, i) => {
                 const start = r.node.start_s ?? 0;
                 const end = r.node.end_s != null ? r.node.end_s : start + (r.node.duration_ms || 0) / 1000;
-                const isFail = r.node.exit_code != null && r.node.exit_code !== 0;
-                const color = r.node.on_critical_path ? '#ff7043'
-                    : isFail ? '#ef4444'
+                const spanEnd = start + (r.node.span_ms || r.node.duration_ms || 0) / 1000;
+                const failed = isFailed(r.node);
+                let color = r.node.on_critical_path ? '#ff7043'
+                    : failed ? '#ef4444'
                         : r.node.exit_code === 0 ? '#22c55e' : '#666';
-                barData.push({ value: [i, start, end, barMeta.length] });
-                barMeta.push({ row: r, color });
+                // Dim bars that are outside the focused subtree
+                const dimmed = focusedUids && !focusedUids.has(r.node._uid);
+                if (dimmed) color = '#333';
+                barData.push({ value: [i, start, end, barMeta.length, spanEnd] });
+                barMeta.push({ row: r, color, dimmed });
             });
 
-            // Fixed row height — chart grows with content, wrapper scrolls
             const ROW_H = 28;
             const chartH = Math.max(200, rows.length * ROW_H + 30);
             container.style.height = chartH + 'px';
@@ -1493,7 +1884,6 @@
             container.innerHTML = '';
             ganttChart = echarts.init(container, 'dark');
 
-            // Main chart — no slider dataZoom, only inside (scroll) zoom
             ganttChart.setOption({
                 tooltip: {
                     trigger: 'item',
@@ -1501,11 +1891,14 @@
                         const meta = barMeta[params.data.value[3]];
                         if (!meta) return '';
                         const n = meta.row.node;
-                        const dur = n.duration_ms;
-                        const exitText = n.exit_code != null ? (n.exit_code === 0 ? 'OK' : `Exit ${n.exit_code}`) : 'Running';
+                        const span = n.span_ms || n.duration_ms;
+                        const spanInfo = span > n.duration_ms + 1
+                            ? `<br/>Span: ${fmtMs(span)}` : '';
+                        const tcpInfo = n.ebpf && n.ebpf.tcp_connect_count > 0
+                            ? `<br/>TCP: ${n.ebpf.tcp_connect_count} connections` : '';
                         return `<b>${n.display_name || n.name}</b> (PID ${n.pid})<br/>` +
-                            `Duration: ${fmtMs(dur)}<br/>` +
-                            `Status: ${exitText}<br/>` +
+                            `Duration: ${fmtMs(n.duration_ms)}${spanInfo}<br/>` +
+                            `Status: ${exitText(n)}${tcpInfo}<br/>` +
                             (n.children && n.children.length ? `Children: ${n.children.length}` : '');
                     },
                 },
@@ -1540,15 +1933,18 @@
                             const catIdx = api.value(0);
                             const startVal = api.value(1);
                             const endVal = api.value(2);
+                            const metaIdx = api.value(3);
+                            const spanEndVal = api.value(4);
                             if (startVal == null || isNaN(startVal)) return null;
                             const start = api.coord([startVal, catIdx]);
                             const end = api.coord([endVal ?? startVal, catIdx]);
-                            const metaIdx = api.value(3);
+                            const spanEnd = api.coord([spanEndVal, catIdx]);
                             const meta = barMeta[metaIdx];
                             const bandWidth = api.size([0, 1])[1];
                             const barH = Math.max(bandWidth * 0.6, 4);
+                            const isDimmed = meta && meta.dimmed;
 
-                            return {
+                            const mainBar = {
                                 type: 'rect',
                                 shape: {
                                     x: start[0],
@@ -1558,8 +1954,36 @@
                                 },
                                 style: {
                                     fill: meta ? meta.color : '#666',
+                                    opacity: isDimmed ? 0.25 : 0.7,
+                                },
+                                emphasis: {
+                                    style: {
+                                        fill: isDimmed ? undefined : '#fff',
+                                        opacity: isDimmed ? 0.25 : 1,
+                                    },
                                 },
                             };
+
+                            const children = [mainBar];
+
+                            // Draw thin tail if span extends beyond process exit
+                            if (spanEnd[0] - end[0] > 2) {
+                                children.push({
+                                    type: 'rect',
+                                    shape: {
+                                        x: end[0],
+                                        y: start[1] - 1,
+                                        width: spanEnd[0] - end[0],
+                                        height: 2,
+                                    },
+                                    style: {
+                                        fill: meta ? meta.color : '#666',
+                                        opacity: isDimmed ? 0.1 : 0.35,
+                                    },
+                                });
+                            }
+
+                            return children.length === 1 ? mainBar : { type: 'group', children };
                         } catch (e) { console.error('[gantt] renderItem failed:', e); return null; }
                     },
                     encode: { x: [1, 2], y: 0 },
@@ -1567,7 +1991,7 @@
                 }],
             }, true);
 
-            // ── Sticky zoom slider (separate chart below the scrollable wrapper) ──
+            // ── Zoom slider ──
             zoomEl.style.height = '90px';
 
             if (ganttZoomChart) { ganttZoomChart.dispose(); ganttZoomChart = null; }
@@ -1603,7 +2027,7 @@
                 series: [{ type: 'custom', data: [], renderItem: () => null }],
             }, true);
 
-            // Sync zoom: slider → main chart
+            // Sync zoom between main chart and slider
             let syncing = false;
             ganttZoomChart.on('dataZoom', () => {
                 if (syncing) return;
@@ -1612,8 +2036,6 @@
                 ganttChart.dispatchAction({ type: 'dataZoom', start: opt.start, end: opt.end });
                 syncing = false;
             });
-
-            // Sync zoom: main chart (inside scroll) → slider
             ganttChart.on('dataZoom', () => {
                 if (syncing) return;
                 syncing = true;
@@ -1622,56 +2044,50 @@
                 syncing = false;
             });
 
-            function handleGanttClick(row) {
-                const node = row.node;
-                const wasExpanded = row.hasChildren && expandedPids.has(node.pid);
-
-                if (row.hasChildren) {
-                    if (wasExpanded) {
-                        expandedPids.delete(node.pid);
-                    } else {
-                        expandedPids.add(node.pid);
-                    }
-                }
-
-                ganttPage = 0;
-                if (wasExpanded) {
-                    selectedPids = null;
-                    document.getElementById('inspector').style.display = 'none';
-                } else {
-                    selectedPids = new Set();
-                    collectPids(node, selectedPids);
-                    renderInspector(node);
-                }
-                render();
-            }
-
-            // Click handler for bars
-            ganttChart.off('click');
-            ganttChart.on('click', (params) => {
-                try {
-                    if (!params.data) return;
-                    const meta = barMeta[params.data.value[3]];
-                    if (!meta) return;
-                    handleGanttClick(meta.row);
-                } catch (e) { console.error('[gantt] bar click failed:', e); }
-            });
-
-            // Click on y-axis labels
+            // ── Click handlers ──
+            // Label click (left gutter): expand/collapse
+            // Bar click: show inspector + focus
             ganttChart.getZr().off('click');
             ganttChart.getZr().on('click', (params) => {
                 try {
                     const pointInPixel = [params.offsetX, params.offsetY];
+                    const pointInGrid = ganttChart.convertFromPixel('grid', pointInPixel);
+                    if (!pointInGrid) return;
+                    const rowIdx = Math.round(pointInGrid[1]);
+                    if (rowIdx < 0 || rowIdx >= rows.length) return;
+
+                    const row = rows[rowIdx];
+                    const focusMode = document.getElementById('focusOnClick').checked;
+
                     if (pointInPixel[0] < 200) {
-                        const pointInGrid = ganttChart.convertFromPixel('grid', pointInPixel);
-                        if (pointInGrid) {
-                            const rowIdx = Math.round(pointInGrid[1]);
-                            if (rowIdx >= 0 && rowIdx < rows.length) {
-                                handleGanttClick(rows[rowIdx]);
+                        // Label area click: toggle expand/collapse
+                        if (row.hasChildren) {
+                            if (expandedUids.has(row.node._uid)) {
+                                expandedUids.delete(row.node._uid);
+                            } else {
+                                expandedUids.add(row.node._uid);
+                            }
+                            ganttPage = 0;
+                            renderGantt();
+                        } else {
+                            renderInspector(row.node);
+                            if (focusMode) {
+                                focusedUids = new Set([row.node._uid]);
+                                focusedPids = new Set([row.node.pid]);
+                                render();
                             }
                         }
+                    } else {
+                        // Bar area click: show inspector + focus subtree
+                        renderInspector(row.node);
+                        if (focusMode) {
+                            focusedUids = new Set();
+                            focusedPids = new Set();
+                            collectFocus(row.node, focusedUids, focusedPids);
+                            render();
+                        }
                     }
-                } catch (e) { console.error('[gantt] label click failed:', e); }
+                } catch (e) { console.error('[gantt] click failed:', e); }
             });
         }
 
@@ -1687,24 +2103,28 @@
             const childCount = new Map();
             for (const p of allProcesses) childCount.set(p.ppid, (childCount.get(p.ppid) || 0) + 1);
 
-            const data = processes.filter(p => p.duration_ms > 0).map(p => ({
-                value: [p.start_ms, p.duration_ms, childCount.get(p.pid) || 0],
-                itemStyle: { color: p.exit_code === 0 ? '#22c55e' : p.exit_code === null ? '#666' : '#ef4444' },
-                process: p,
-            }));
+            const data = processes.filter(p => p.duration_ms > 0).map(p => {
+                const dimmed = focusedPids && !focusedPids.has(p.pid);
+                const baseColor = isFailed(p) ? '#ef4444' : p.exit_code === null ? '#666' : '#22c55e';
+                return {
+                    value: [p.start_ms, p.duration_ms, childCount.get(p.pid) || 0],
+                    itemStyle: { color: dimmed ? '#333' : baseColor, opacity: dimmed ? 0.25 : 0.7 },
+                    emphasis: { itemStyle: { opacity: dimmed ? 0.25 : 1 } },
+                    process: p,
+                };
+            });
 
             scatterChart.setOption({
-                title: { text: 'Process Duration Scatter', left: 24, textStyle: { fontSize: 14 } },
                 tooltip: {
                     formatter: p => {
                         const pr = p.data.process;
                         return `<b>${pr.display_name}</b> (PID ${pr.pid})<br>` +
                             `Start: ${fmtMs(pr.start_ms)}<br>Duration: ${pr.duration_ms.toFixed(2)}ms<br>` +
-                            `Children: ${p.data.value[2]}<br>Exit: ${pr.exit_code ?? 'running'}<br>` +
-                            `<span style="color:#4fc3f7">Click to filter</span>`;
+                            `Children: ${p.data.value[2]}<br>Exit: ${exitText(pr)}<br>` +
+                            `<span style="color:#4fc3f7">Click to inspect</span>`;
                     }
                 },
-                grid: { left: 80, right: 40, top: 50, bottom: 50 },
+                grid: { left: 80, right: 40, top: 10, bottom: 50 },
                 xAxis: {
                     type: 'value', name: 'Start time', nameLocation: 'middle', nameGap: 30,
                     axisLabel: { formatter: v => fmtMs(v) }
@@ -1717,7 +2137,7 @@
                 }],
             }, true);
 
-            // Click: filter table to this process and show inspector
+            // Click: find tree node and show inspector + focus
             scatterChart.off('click');
             scatterChart.on('click', (params) => {
                 try {
@@ -1735,16 +2155,16 @@
                         return null;
                     }
                     const treeNode = findTreeNode(allProcessTree, proc.pid);
+                    const node = treeNode || proc;
+                    renderInspector(node);
 
-                    selectedPids = new Set([proc.pid]);
-                    if (treeNode) {
-                        collectPids(treeNode, selectedPids);
-                        renderInspector(treeNode);
-                    } else {
-                        renderInspector(proc);
+                    const focusMode = document.getElementById('focusOnClick').checked;
+                    if (focusMode && node._uid != null) {
+                        focusedUids = new Set();
+                        focusedPids = new Set();
+                        collectFocus(node, focusedUids, focusedPids);
+                        render();
                     }
-
-                    render();
                 } catch (e) { console.error('[scatter] click failed:', e); }
             });
         }
@@ -1755,12 +2175,15 @@
             const capped = processes.slice(0, 500);
             const tbody = document.querySelector('#processTable tbody');
             tbody.innerHTML = capped.map(p => {
-                const exitClass = p.exit_code === null ? '' : p.exit_code === 0 ? 'exit-ok' : 'exit-fail';
+                const ec = exitClass(p);
+                const exitDisplay = p.signal > 0 ? (p.signal_name || `SIG${p.signal}`) : (p.exit_code ?? '-');
                 const wrapperClass = p.wrapper ? 'wrapper-tag' : '';
-                return `<tr class="${wrapperClass}">
-      <td>${p.display_name}</td><td>${p.pid}</td><td>${p.ppid}</td>
-      <td>${p.duration_ms.toFixed(2)}</td><td class="${exitClass}">${p.exit_code ?? '-'}</td>
-      <td>${p.filename}</td><td>${p.args.slice(1).join(' ')}</td></tr>`;
+                const dimmed = focusedPids && !focusedPids.has(p.pid);
+                const dimStyle = dimmed ? 'opacity:0.25' : '';
+                return `<tr class="${wrapperClass}" style="${dimStyle}">
+      <td>${escapeHtml(p.display_name)}</td><td>${p.pid}</td><td>${p.ppid}</td>
+      <td>${p.duration_ms.toFixed(2)}</td><td class="${ec === 'ok' ? 'exit-ok' : ec === 'fail' ? 'exit-fail' : ''}">${exitDisplay}</td>
+      <td>${escapeHtml(p.filename)}</td><td>${escapeHtml((p.args || []).join(' '))}</td></tr>`;
             }).join('');
         }
 

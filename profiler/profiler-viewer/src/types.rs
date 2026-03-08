@@ -12,6 +12,10 @@ pub struct ProcessEventRaw {
     pub time_ns: u64,
     pub event_type: String,
     pub exit_code: u32,
+    #[serde(default)]
+    pub signal: u32,
+    #[serde(default)]
+    pub signal_name: Option<String>,
     pub duration_ns: u64,
     pub pid: u32,
     pub ppid: u32,
@@ -63,7 +67,7 @@ pub struct NetworkMetrics {
 pub struct BlockIoEventRaw {
     pub time_ns: u64,
     pub latency_ns: u64,
-    pub rwbs: String,
+    pub operation: String,
     pub nr_sectors: u32,
     pub pid: u32,
     pub name: String,
@@ -74,6 +78,28 @@ pub struct SchedLatencyEventRaw {
     pub time_ns: u64,
     pub latency_ns: u64,
     pub pid: u32,
+    pub name: String,
+}
+
+#[derive(Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum TcpType {
+    Connect,
+    Accept,
+    Close,
+}
+
+#[derive(Deserialize)]
+pub struct TcpEventRaw {
+    pub time_ns: u64,
+    pub tcp_type: TcpType,
+    pub pid: u32,
+    pub saddr: String,
+    pub daddr: String,
+    pub sport: u16,
+    pub dport: u16,
+    #[serde(default)]
+    pub duration_ns: u64,
     pub name: String,
 }
 
@@ -110,6 +136,9 @@ pub struct ViewerResult {
     pub sched_latency: Vec<SchedLatencyOut>,
     pub block_io_summaries: Vec<BlockIoSummaryOut>,
     pub sched_summaries: Vec<SchedSummaryOut>,
+    pub tcp: Vec<TcpOut>,
+    pub tcp_connections: Vec<TcpConnectionOut>,
+    pub tcp_summaries: Vec<TcpSummaryOut>,
     pub oom_kills: Vec<OomKillOut>,
     pub stats: Stats,
 }
@@ -124,6 +153,9 @@ pub struct ProcessOut {
     pub wrapper: bool,
     pub args: Vec<String>,
     pub exit_code: Option<u32>,
+    pub signal: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signal_name: Option<String>,
     pub start_s: f64,
     pub end_s: Option<f64>,
     pub duration_ms: f64,
@@ -144,7 +176,7 @@ pub struct BlockIoOut {
     pub time_s: f64,
     pub latency_ms: f64,
     pub is_read: bool,
-    pub rwbs: String,
+    pub operation: String,
     pub nr_sectors: u32,
     pub name: String,
     pub pid: u32,
@@ -156,6 +188,59 @@ pub struct SchedLatencyOut {
     pub latency_ms: f64,
     pub name: String,
     pub pid: u32,
+}
+
+#[derive(Serialize)]
+pub struct TcpOut {
+    pub time_s: f64,
+    pub tcp_type: TcpType,
+    pub pid: u32,
+    pub saddr: String,
+    pub daddr: String,
+    pub sport: u16,
+    pub dport: u16,
+    pub duration_ms: f64,
+    pub name: String,
+    pub endpoint: String,
+}
+
+#[derive(Serialize)]
+pub struct TcpConnectionOut {
+    pub start_s: f64,
+    pub end_s: f64,
+    pub duration_ms: f64,
+    pub connect_ms: f64,
+    pub pid: u32,
+    pub name: String,
+    pub saddr: String,
+    pub daddr: String,
+    pub sport: u16,
+    pub dport: u16,
+    pub endpoint: String,
+    pub closed: bool,
+}
+
+#[derive(Serialize)]
+pub struct TcpSummaryOut {
+    pub time_s: f64,
+    pub window_s: f64,
+    pub connects: TcpTypeStats,
+    pub accepts: TcpTypeStats,
+    pub closes: TcpTypeStats,
+}
+
+#[derive(Serialize)]
+pub struct TcpTypeStats {
+    pub count: u64,
+    pub latency: LatencyStatsOut,
+    pub top_endpoints: Vec<EndpointStats>,
+}
+
+#[derive(Serialize)]
+pub struct EndpointStats {
+    pub endpoint: String,
+    pub count: u64,
+    pub avg_ms: f64,
 }
 
 #[derive(Serialize)]
@@ -222,6 +307,7 @@ pub struct Stats {
     pub block_io_count: u64,
     pub sched_latency_count: u64,
     pub metrics_count: u64,
+    pub tcp_count: u64,
     pub oom_kill_count: u64,
 }
 
@@ -235,9 +321,13 @@ pub struct ProcessTreeNode {
     pub wrapper: bool,
     pub args: Vec<String>,
     pub exit_code: Option<u32>,
+    pub signal: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signal_name: Option<String>,
     pub start_s: f64,
     pub end_s: Option<f64>,
     pub duration_ms: f64,
+    pub span_ms: f64,
     pub on_critical_path: bool,
     pub ebpf: ProcessEbpfStats,
     pub children: Vec<ProcessTreeNode>,
@@ -255,6 +345,10 @@ pub struct ProcessEbpfStats {
     pub block_io_write_count: u64,
     pub block_io_write_avg_ms: f64,
     pub block_io_write_max_ms: f64,
+    pub tcp_connect_count: u64,
+    pub tcp_connect_avg_ms: f64,
+    pub tcp_connect_max_ms: f64,
+    pub tcp_active_connections: u64,
 }
 
 #[derive(Serialize)]

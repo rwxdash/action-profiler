@@ -97,6 +97,10 @@ Thumbs.db
 # WASM build output symlink
 profiler/tests/pkg
 
+# Compiled artifacts (built fresh in CI, committed by release workflow)
+profiler/bin/profiler
+profiler/bin/out/pkg/profiler_viewer_bg.wasm
+
 # Ignore built ts files
 __tests__/runner/*
 
@@ -109,3 +113,7 @@ tmp/
 
 # Docs
 docs/
+
+# Clangd
+.clangd
+compile_commands.json

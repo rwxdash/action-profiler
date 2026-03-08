@@ -1,0 +1,226 @@
+===== Date & Hostname =====
+Wed Mar  4 04:38:12 PM UTC 2026
+workspace
+
+===== Kernel Version =====
+Linux workspace 6.8.0-101-generic #101-Ubuntu SMP PREEMPT_DYNAMIC Mon Feb  9 10:15:05 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+
+===== OS Release =====
+PRETTY_NAME="Ubuntu 24.04.4 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.4 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+
+===== BTF Available? =====
+-r--r--r-- 1 root root 5.9M Mar  4 16:03 /sys/kernel/btf/vmlinux
+BTF is available
+
+===== Tracefs Mount =====
+tracefs on /sys/kernel/tracing type tracefs (rw,nosuid,nodev,noexec,relatime)
+Tracefs at: /sys/kernel/tracing
+
+===== sched_process_exec format =====
+name: sched_process_exec
+ID: 323
+format:
+	field:unsigned short common_type;	offset:0;	size:2;	signed:0;
+	field:unsigned char common_flags;	offset:2;	size:1;	signed:0;
+	field:unsigned char common_preempt_count;	offset:3;	size:1;	signed:0;
+	field:int common_pid;	offset:4;	size:4;	signed:1;
+
+	field:__data_loc char[] filename;	offset:8;	size:4;	signed:0;
+	field:pid_t pid;	offset:12;	size:4;	signed:1;
+	field:pid_t old_pid;	offset:16;	size:4;	signed:1;
+
+print fmt: "filename=%s pid=%d old_pid=%d", __get_str(filename), REC->pid, REC->old_pid
+
+===== sched_process_exit format =====
+name: sched_process_exit
+ID: 327
+format:
+	field:unsigned short common_type;	offset:0;	size:2;	signed:0;
+	field:unsigned char common_flags;	offset:2;	size:1;	signed:0;
+	field:unsigned char common_preempt_count;	offset:3;	size:1;	signed:0;
+	field:int common_pid;	offset:4;	size:4;	signed:1;
+
+	field:char comm[16];	offset:8;	size:16;	signed:0;
+	field:pid_t pid;	offset:24;	size:4;	signed:1;
+	field:int prio;	offset:28;	size:4;	signed:1;
+
+print fmt: "comm=%s pid=%d prio=%d", REC->comm, REC->pid, REC->prio
+
+===== sched_process_fork format =====
+name: sched_process_fork
+ID: 324
+format:
+	field:unsigned short common_type;	offset:0;	size:2;	signed:0;
+	field:unsigned char common_flags;	offset:2;	size:1;	signed:0;
+	field:unsigned char common_preempt_count;	offset:3;	size:1;	signed:0;
+	field:int common_pid;	offset:4;	size:4;	signed:1;
+
+	field:char parent_comm[16];	offset:8;	size:16;	signed:0;
+	field:pid_t parent_pid;	offset:24;	size:4;	signed:1;
+	field:char child_comm[16];	offset:28;	size:16;	signed:0;
+	field:pid_t child_pid;	offset:44;	size:4;	signed:1;
+
+print fmt: "comm=%s pid=%d child_comm=%s child_pid=%d", REC->parent_comm, REC->parent_pid, REC->child_comm, REC->child_pid
+
+===== syscalls/sys_enter_execve format =====
+name: sys_enter_execve
+ID: 782
+format:
+	field:unsigned short common_type;	offset:0;	size:2;	signed:0;
+	field:unsigned char common_flags;	offset:2;	size:1;	signed:0;
+	field:unsigned char common_preempt_count;	offset:3;	size:1;	signed:0;
+	field:int common_pid;	offset:4;	size:4;	signed:1;
+
+	field:int __syscall_nr;	offset:8;	size:4;	signed:1;
+	field:const char * filename;	offset:16;	size:8;	signed:0;
+	field:const char *const * argv;	offset:24;	size:8;	signed:0;
+	field:const char *const * envp;	offset:32;	size:8;	signed:0;
+
+print fmt: "filename: 0x%08lx, argv: 0x%08lx, envp: 0x%08lx", ((unsigned long)(REC->filename)), ((unsigned long)(REC->argv)), ((unsigned long)(REC->envp))
+
+===== oom/mark_victim format =====
+name: mark_victim
+ID: 542
+format:
+	field:unsigned short common_type;	offset:0;	size:2;	signed:0;
+	field:unsigned char common_flags;	offset:2;	size:1;	signed:0;
+	field:unsigned char common_preempt_count;	offset:3;	size:1;	signed:0;
+	field:int common_pid;	offset:4;	size:4;	signed:1;
+
+	field:int pid;	offset:8;	size:4;	signed:1;
+	field:__data_loc char[] comm;	offset:12;	size:4;	signed:0;
+	field:unsigned long total_vm;	offset:16;	size:8;	signed:0;
+	field:unsigned long anon_rss;	offset:24;	size:8;	signed:0;
+	field:unsigned long file_rss;	offset:32;	size:8;	signed:0;
+	field:unsigned long shmem_rss;	offset:40;	size:8;	signed:0;
+	field:uid_t uid;	offset:48;	size:4;	signed:0;
+	field:unsigned long pgtables;	offset:56;	size:8;	signed:0;
+	field:short oom_score_adj;	offset:64;	size:2;	signed:1;
+
+print fmt: "pid=%d comm=%s total-vm=%lukB anon-rss=%lukB file-rss:%lukB shmem-rss:%lukB uid=%u pgtables=%lukB oom_score_adj=%hd", REC->pid, __get_str(comm), REC->total_vm, REC->anon_rss, REC->file_rss, REC->shmem_rss, REC->uid, REC->pgtables, REC->oom_score_adj
+
+===== block/block_rq_issue format =====
+name: block_rq_issue
+ID: 1255
+format:
+	field:unsigned short common_type;	offset:0;	size:2;	signed:0;
+	field:unsigned char common_flags;	offset:2;	size:1;	signed:0;
+	field:unsigned char common_preempt_count;	offset:3;	size:1;	signed:0;
+	field:int common_pid;	offset:4;	size:4;	signed:1;
+
+	field:dev_t dev;	offset:8;	size:4;	signed:0;
+	field:sector_t sector;	offset:16;	size:8;	signed:0;
+	field:unsigned int nr_sector;	offset:24;	size:4;	signed:0;
+	field:unsigned int bytes;	offset:28;	size:4;	signed:0;
+	field:char rwbs[8];	offset:32;	size:8;	signed:0;
+	field:char comm[16];	offset:40;	size:16;	signed:0;
+	field:__data_loc char[] cmd;	offset:56;	size:4;	signed:0;
+
+print fmt: "%d,%d %s %u (%s) %llu + %u [%s]", ((unsigned int) ((REC->dev) >> 20)), ((unsigned int) ((REC->dev) & ((1U << 20) - 1))), REC->rwbs, REC->bytes, __get_str(cmd), (unsigned long long)REC->sector, REC->nr_sector, REC->comm
+
+===== block/block_rq_complete format =====
+name: block_rq_complete
+ID: 1258
+format:
+	field:unsigned short common_type;	offset:0;	size:2;	signed:0;
+	field:unsigned char common_flags;	offset:2;	size:1;	signed:0;
+	field:unsigned char common_preempt_count;	offset:3;	size:1;	signed:0;
+	field:int common_pid;	offset:4;	size:4;	signed:1;
+
+	field:dev_t dev;	offset:8;	size:4;	signed:0;
+	field:sector_t sector;	offset:16;	size:8;	signed:0;
+	field:unsigned int nr_sector;	offset:24;	size:4;	signed:0;
+	field:int error;	offset:28;	size:4;	signed:1;
+	field:char rwbs[8];	offset:32;	size:8;	signed:0;
+	field:__data_loc char[] cmd;	offset:40;	size:4;	signed:0;
+
+print fmt: "%d,%d %s (%s) %llu + %u [%d]", ((unsigned int) ((REC->dev) >> 20)), ((unsigned int) ((REC->dev) & ((1U << 20) - 1))), REC->rwbs, __get_str(cmd), (unsigned long long)REC->sector, REC->nr_sector, REC->error
+
+===== task_struct BTF dump (pahole) =====
+(pahole not installed - install dwarves package)
+Trying bpftool btf dump instead...
+	struct address_space *faults_disabled_mapping;
+	int exit_state;
+	int exit_code;
+	int exit_signal;
+	int pdeath_signal;
+--
+	struct sigpending shared_pending;
+	struct hlist_head multiprocess;
+	int group_exit_code;
+	int notify_count;
+	struct task_struct *group_exec_task;
+--
+	__kernel_pid_t process_pid;
+	__kernel_pid_t process_tgid;
+	__u32 exit_code;
+	__u32 exit_signal;
+	__kernel_pid_t parent_pid;
+--
+	u64 r15;
+	u8 reserved_0x380[16];
+...
+	pid_t tgid;
+	long unsigned int stack_canary;
+	struct task_struct *real_parent;
+	struct task_struct *parent;
+	struct list_head children;
+--
+	const cpumask_t *cpus_ptr;
+	struct css_set *cgroups;
+	struct task_struct *real_parent;
+	struct task_struct *group_leader;
+};
+
+===== /proc/version =====
+Linux version 6.8.0-101-generic (buildd@lcy02-amd64-051) (x86_64-linux-gnu-gcc-13 (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #101-Ubuntu SMP PREEMPT_DYNAMIC Mon Feb  9 10:15:05 UTC 2026
+
+===== Available BPF helpers =====
+eBPF program_type socket_filter is available
+eBPF program_type kprobe is available
+eBPF program_type sched_cls is available
+eBPF program_type sched_act is available
+eBPF program_type tracepoint is available
+eBPF program_type xdp is available
+eBPF program_type perf_event is available
+eBPF program_type cgroup_skb is available
+eBPF program_type cgroup_sock is available
+eBPF program_type lwt_in is available
+eBPF program_type lwt_out is available
+eBPF program_type lwt_xmit is available
+eBPF program_type sock_ops is available
+eBPF program_type sk_skb is available
+eBPF program_type cgroup_device is available
+eBPF program_type sk_msg is available
+eBPF program_type raw_tracepoint is available
+eBPF program_type cgroup_sock_addr is available
+eBPF program_type lwt_seg6local is available
+eBPF program_type lirc_mode2 is NOT available
+eBPF program_type sk_reuseport is available
+eBPF program_type flow_dissector is available
+eBPF program_type cgroup_sysctl is available
+eBPF program_type raw_tracepoint_writable is available
+eBPF program_type cgroup_sockopt is available
+eBPF program_type tracing is available
+eBPF program_type struct_ops is available
+eBPF program_type ext is available
+eBPF program_type lsm is available
+eBPF program_type sk_lookup is available
+...
+
+===== CAP_BPF check =====
+CAP_BPF available
+
+===== Done =====

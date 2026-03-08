@@ -1,27 +1,88 @@
+import { spawn } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
+import fs from 'node:fs'
 import * as core from '@actions/core'
-import { wait } from './wait.js'
 
-/**
- * The main function for the action.
- *
- * @returns Resolves when the action is complete.
- */
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+const STATE_PID = 'PROFILER_PID'
+const STATE_OUTPUT = 'PROFILER_OUTPUT'
+
 export async function run(): Promise<void> {
   try {
-    const ms: string = core.getInput('milliseconds')
+    if (process.platform !== 'linux') {
+      core.warning(
+        `action-profiler requires Linux (eBPF). Skipping on ${process.platform}.`
+      )
+      return
+    }
 
-    // Debug logs are only output if the `ACTIONS_STEP_DEBUG` secret is true
-    core.debug(`Waiting ${ms} milliseconds ...`)
+    // Check if sudo is available (eBPF requires root/CAP_BPF)
+    try {
+      const { execSync } = await import('node:child_process')
+      execSync('sudo -n true 2>/dev/null')
+    } catch {
+      core.warning(
+        'action-profiler requires sudo (for eBPF). Skipping - no sudo access.'
+      )
+      return
+    }
 
-    // Log the current timestamp, wait, then log the new timestamp
-    core.debug(new Date().toTimeString())
-    await wait(parseInt(ms, 10))
-    core.debug(new Date().toTimeString())
+    const profilerBin = path.resolve(__dirname, '../../profiler/bin/profiler')
 
-    // Set outputs for other workflow steps to use
-    core.setOutput('time', new Date().toTimeString())
+    if (!fs.existsSync(profilerBin)) {
+      core.warning(
+        'No profiler binary found. Run scripts/build.sh to build it. ' +
+          'See https://github.com/rwxdash/action-profiler for details.'
+      )
+      return
+    }
+
+    fs.chmodSync(profilerBin, 0o755)
+
+    const tmpDir = process.env.RUNNER_TEMP || '/tmp'
+    const outputPath = path.join(tmpDir, 'profiler-events.jsonl')
+
+    const metricFrequency = core.getInput('metric_frequency') || '5'
+    const procTraceSysEnable =
+      core.getInput('proc_trace_sys_enable') === 'true'
+
+    const args: string[] = [
+      profilerBin,
+      '--output',
+      outputPath,
+      '--metric-frequency',
+      metricFrequency
+    ]
+
+    if (procTraceSysEnable) {
+      args.push('--no-default-ignore')
+    }
+
+    core.info(`Spawning profiler: sudo ${args.join(' ')}`)
+
+    const child = spawn('sudo', args, {
+      detached: true,
+      stdio: 'ignore'
+    })
+
+    child.unref()
+
+    if (!child.pid) {
+      core.setFailed('Failed to start profiler - no PID returned')
+      return
+    }
+
+    core.saveState(STATE_PID, child.pid.toString())
+    core.saveState(STATE_OUTPUT, outputPath)
+
+    core.info(`Profiler started (PID ${child.pid}), output: ${outputPath}`)
   } catch (error) {
-    // Fail the workflow run if an error occurs
     if (error instanceof Error) core.setFailed(error.message)
   }
 }
+
+
+run()
