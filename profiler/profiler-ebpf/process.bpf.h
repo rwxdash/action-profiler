@@ -174,8 +174,11 @@ int handle_sched_process_exec(struct bpf_raw_tracepoint_args *ctx)
 SEC("raw_tracepoint/sched_process_fork")
 int handle_sched_process_fork(struct bpf_raw_tracepoint_args *ctx)
 {
-    struct task_struct *parent = (struct task_struct *) ctx->args[0];
-    struct task_struct *child  = (struct task_struct *) ctx->args[1];
+    // Cast to __u64* to avoid CO-RE relocation on the flexible array member.
+    // aya's relocator rejects ctx->args[N] because bpf_raw_tracepoint_args.args
+    // has nr_elems=0 in BTF (flexible array). Same workaround as sched_process_exec.
+    struct task_struct *parent = (struct task_struct *) ((__u64 *) ctx)[0];
+    struct task_struct *child  = (struct task_struct *) ((__u64 *) ctx)[1];
 
     __u32 parent_pid = BPF_CORE_READ(parent, tgid);
     __u32 child_pid  = BPF_CORE_READ(child, tgid);

@@ -18,6 +18,22 @@
 #define EVENT_OOM_KILL               2
 #define EVENT_BLOCK_IO               3
 #define EVENT_SCHED_LATENCY          4
+#define EVENT_TCP                    5
+
+#define TCP_TYPE_CONNECT             0
+#define TCP_TYPE_ACCEPT              1
+#define TCP_TYPE_CLOSE               2
+
+// TCP states (from include/net/tcp_states.h)
+#define TCP_ST_ESTABLISHED           1
+#define TCP_ST_SYN_SENT              2
+#define TCP_ST_SYN_RECV              3
+#define TCP_ST_FIN_WAIT1             4
+#define TCP_ST_CLOSE                 7
+#define TCP_ST_CLOSE_WAIT            8
+#define TCP_ST_LAST_ACK              9
+#define TCP_ST_LISTEN                10
+#define TCP_ST_NEW_SYN_RECV          12
 
 #define CONFIG_SCHED_THRESHOLD_NS    0
 #define CONFIG_BLOCK_IO_THRESHOLD_NS 1
@@ -50,7 +66,7 @@ struct oom_kill_event {
     __u64 shmem_rss_kb;                   // Shared memory RSS (KB)
     __u64 pgtables_kb;                    // Page table memory (KB, mm_pgtables_bytes >> 10)
     __s16 oom_score_adj;                  // OOM score adjustment
-    char  victim_name[MAX_PROC_NAME_LEN]; // Victim comm (from __data_loc)
+    char  victim_name[MAX_PROC_NAME_LEN]; // Victim comm (from task->comm via CO-RE)
     char  oncpu_name[MAX_PROC_NAME_LEN];  // on-CPU when OOM fired (not necessarily the cause)}
 };
 
@@ -61,7 +77,7 @@ struct block_io_event {
     __u64 sector;                  // Starting sector
     __u32 nr_sectors;              // Request size in sectors
     __u64 latency_ns;              // Time from issue to complete
-    char  rwbs[8];                 // R/W/D flags (raw from tracepoint)
+    __u32 cmd_flags;               // cmd_flags bitmask (lower 8 bits = op: 0=read,1=write,2=flush,3=discard)
     __u32 pid;                     // Process that issued the I/O
     char  name[MAX_PROC_NAME_LEN]; // Process comm
 };
@@ -70,7 +86,7 @@ struct block_io_stash {
     __u64 time_ns;
     __u32 pid;                     // Process ID
     char  name[MAX_PROC_NAME_LEN]; // Process comm
-    char  rwbs[8];                 // RWBS flags
+    __u32 cmd_flags;               // cmd_flags bitmask
     __u32 nr_sectors;              // Number of sectors
 };
 
@@ -82,6 +98,28 @@ struct sched_latency_event {
     __s32 prio;                    // Task priority
     __s32 target_cpu;              // CPU the task was scheduled on
     char  name[MAX_PROC_NAME_LEN]; // Process comm
+};
+
+struct tcp_event {
+    __u64 time_ns;
+    __u8  event_type;              // EVENT_TCP (5)
+    __u8  type;                    // TCP_TYPE_CONNECT/ACCEPT/CLOSE
+    __u16 family;                  // AF_INET=2, AF_INET6=10
+    __u32 pid;                     // Process ID
+    __u32 saddr_v4;                // Source IPv4 (network byte order)
+    __u32 daddr_v4;                // Dest IPv4 (network byte order)
+    __u8  saddr_v6[16];            // Source IPv6
+    __u8  daddr_v6[16];            // Dest IPv6
+    __u16 sport;                   // Source port (host byte order)
+    __u16 dport;                   // Dest port (host byte order)
+    __u64 duration_ns;             // For close events: time since ESTABLISHED
+    char  name[MAX_PROC_NAME_LEN]; // Process comm
+};
+
+struct tcp_conn_stash {
+    __u64 time_ns;                 // When connection was established
+    __u32 pid;                     // Process that opened it
+    char  name[MAX_PROC_NAME_LEN]; // Process comm at open time
 };
 
 // Helper struct for argv stashing between sys_enter_execve and exec
@@ -144,13 +182,6 @@ struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
     __uint(max_entries, 1);
     __type(key, __u32);
-    __type(value, struct process_event);
-} SCRATCH SEC(".maps");
-
-struct {
-    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-    __uint(max_entries, 1);
-    __type(key, __u32);
     __type(value, struct exec_args);
 } ARGS_SCRATCH SEC(".maps");
 
@@ -162,13 +193,6 @@ struct {
     __type(value, __u64);
 } WAKEUP_START SEC(".maps");
 
-struct {
-    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-    __uint(max_entries, 1);
-    __type(key, __u32);
-    __type(value, struct sched_latency_event);
-} SCHED_SCRATCH SEC(".maps");
-
 // Block I/O Tracking
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
@@ -177,19 +201,14 @@ struct {
     __type(value, struct block_io_stash);
 } IO_START SEC(".maps");
 
+// TCP Connection Tracking
+// Key: skaddr (kernel socket pointer)
+// unique per socket, stable across state transitions
 struct {
-    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-    __uint(max_entries, 1);
-    __type(key, __u32);
-    __type(value, struct block_io_event);
-} BLOCK_IO_SCRATCH SEC(".maps");
-
-// OOM Tracking
-struct {
-    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-    __uint(max_entries, 1);
-    __type(key, __u32);
-    __type(value, struct oom_kill_event);
-} OOM_SCRATCH SEC(".maps");
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, 10240);
+    __type(key, __u64);
+    __type(value, struct tcp_conn_stash);
+} TCP_CONN_START SEC(".maps");
 
 #endif // __PROFILER_BPF_H
