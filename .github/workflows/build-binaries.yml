@@ -9,52 +9,30 @@ jobs:
   build:
     strategy:
       matrix:
-        include:
-          - runner: ubuntu-24.04
-            suffix: ubuntu2404
-          - runner: ubuntu-22.04
-            suffix: ubuntu2204
+        runner: [ubuntu-24.04, ubuntu-22.04]
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install bpftool (prebuilt)
-        run: |
-          curl -fsSL https://github.com/libbpf/bpftool/releases/download/v7.6.0/bpftool-v7.6.0-amd64.tar.gz | sudo tar -xz -C /usr/local/bin/
-          sudo chmod +x /usr/local/bin/bpftool
-          bpftool version
-
-      - name: Install Rust nightly + eBPF tools
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly --component rust-src
-          source "$HOME/.cargo/env"
-          cargo install bpf-linker
-          cargo install bindgen-cli
-          cargo install --git https://github.com/aya-rs/aya -- aya-tool
-
-      - name: Generate vmlinux bindings for this kernel
-        run: |
-          source "$HOME/.cargo/env"
-          echo "Kernel: $(uname -r)"
-          aya-tool generate task_struct linux_binprm > profiler/profiler-ebpf/src/vmlinux.rs
-          cp profiler/profiler-ebpf/src/vmlinux.rs vmlinux_${{ matrix.suffix }}.rs
+      - name: Install clang
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq clang
 
       - name: Build profiler
-        run: |
-          source "$HOME/.cargo/env"
-          cd profiler && cargo build --release
+        run: cd profiler && cargo build --release
 
-      - name: Rename binary
+      - name: Prepare binary
         run: |
-          cp profiler/target/release/profiler profiler-${{ matrix.suffix }}
-          chmod +x profiler-${{ matrix.suffix }}
+          cp profiler/target/release/profiler profiler-linux-amd64
+          chmod +x profiler-linux-amd64
 
       - uses: actions/upload-artifact@v4
         with:
-          name: profiler-${{ matrix.suffix }}
-          path: |
-            profiler-${{ matrix.suffix }}
-            vmlinux_${{ matrix.suffix }}.rs
+          name: profiler-${{ matrix.runner }}
+          path: profiler-linux-amd64
           retention-days: 30
