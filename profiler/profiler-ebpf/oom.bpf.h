@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Dual MIT/GPL
 #if !defined(__OOM_BPF_H)
 #define __OOM_BPF_H
 
