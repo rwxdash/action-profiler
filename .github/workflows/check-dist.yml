@@ -1,5 +1,5 @@
 # Verifies that:
-# 1. Profiler binary and WASM viewer compile successfully
+# 1. PR does not include compiled binaries (only updated via update-artifacts)
 # 2. Checked-in dist/ and viewer assets match what would be built from source
 name: Check Build Outputs
 
@@ -13,6 +13,46 @@ permissions:
   contents: read
 
 jobs:
+  reject-binaries:
+    name: No compiled binaries in PR
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for binary changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PROTECTED=(
+            "profiler/bin/profiler"
+            "profiler/bin/out/pkg/profiler_viewer_bg.wasm"
+          )
+
+          CHANGED=$(gh pr diff "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" --name-only)
+
+          FOUND=()
+          for pattern in "${PROTECTED[@]}"; do
+            while IFS= read -r file; do
+              if [[ "$file" == ${pattern}* ]]; then
+                FOUND+=("$file")
+              fi
+            done <<< "$CHANGED"
+          done
+
+          if [ ${#FOUND[@]} -gt 0 ]; then
+            echo "::error::PR contains compiled binaries. These are updated via the update-artifacts workflow only."
+            echo ""
+            echo "Offending files:"
+            for f in "${FOUND[@]}"; do
+              echo "  - $f"
+            done
+            echo ""
+            echo "Run 'bash scripts/dev-setup.sh' to skip-worktree these files locally."
+            exit 1
+          fi
+
+          echo "No compiled binaries in PR."
+
   check-dist:
     name: Check build outputs
     runs-on: ubuntu-latest
@@ -48,7 +88,7 @@ jobs:
           npx rollup --config rollup.config.ts --configPlugin @rollup/plugin-typescript
 
       # Diff only deterministic outputs: transpiled JS, copied HTML/echarts/JS glue.
-      # Compiled artifacts (binary, WASM) aren't reproducible — the build step
+      # Compiled artifacts (binary, WASM) aren't reproducible -- the build step
       # above already verifies they compile. A separate release workflow commits them.
       - name: Compare Deterministic Outputs
         id: diff
