@@ -66,6 +66,7 @@ Open it in any browser, no server needed. It includes:
 | `enable_block_io` | `true` | Enable block I/O latency tracing |
 | `enable_sched_latency` | `true` | Enable scheduler latency tracing |
 | `sched_latency_threshold_ms` | `5` | Minimum scheduler latency in ms to report |
+| `artifact_retention_days` | `3` | Number of days to keep the report artifact |
 
 ## Outputs
 

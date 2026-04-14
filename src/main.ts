@@ -35,7 +35,7 @@ export async function run(): Promise<void> {
     if (!fs.existsSync(profilerBin)) {
       core.warning(
         'No profiler binary found. Run scripts/build.sh to build it. ' +
-          'See https://github.com/rwxdash/action-profiler for details.'
+        'See https://github.com/rwxdash/action-profiler for details.'
       )
       return
     }

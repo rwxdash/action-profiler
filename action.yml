@@ -37,6 +37,10 @@ inputs:
         description: "Minimum scheduler latency in ms to report"
         default: "5"
         required: false
+    artifact_retention_days:
+        description: "Number of days to keep the report artifact"
+        default: "3"
+        required: false
 
 outputs:
     artifact-id:
