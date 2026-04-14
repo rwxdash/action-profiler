@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Dual MIT/GPL
 #if !defined(__PROFILER_BPF_H)
 #define __PROFILER_BPF_H
 

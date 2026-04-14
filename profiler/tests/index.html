@@ -2172,9 +2172,8 @@
         // ── Process Table ───────────────────────────────────────────────────────────
 
         function renderTable(processes) {
-            const capped = processes.slice(0, 500);
             const tbody = document.querySelector('#processTable tbody');
-            tbody.innerHTML = capped.map(p => {
+            tbody.innerHTML = processes.map(p => {
                 const ec = exitClass(p);
                 const exitDisplay = p.signal > 0 ? (p.signal_name || `SIG${p.signal}`) : (p.exit_code ?? '-');
                 const wrapperClass = p.wrapper ? 'wrapper-tag' : '';

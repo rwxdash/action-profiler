@@ -1,164 +1,90 @@
 # Action Profiler
 
-A GitHub Action that profiles CI workflows using eBPF kernel-level tracing. Captures process execution, system metrics, scheduler latency, block I/O, and OOM events — then generates interactive HTML reports.
+A GitHub Action that profiles CI workflows using eBPF. Captures process
+execution, system metrics, scheduler latency, block I/O, and OOM events.
 
-## Architecture
+Generates interactive HTML reports as downloadable artifacts.
 
-```
-action-profiler/
-├── src/                   # TypeScript GitHub Action (entry + post-job reporting)
-├── profiler/
-│   ├── profiler/          # Rust userspace daemon (loads eBPF, collects events + metrics)
-│   ├── profiler-ebpf/     # C eBPF programs (compiled with clang, loaded via aya)
-│   ├── profiler-common/   # Shared Rust types (events, constants)
-│   └── profiler-viewer/   # WASM viewer (processes JSONL → interactive HTML)
-├── action.yml
-└── package.json
-```
+## Quick Start
 
-### eBPF: C programs + Rust userspace
+```yaml
+- uses: rwxdash/action-profiler@v1
 
-eBPF programs are written in C and use CO-RE (Compile Once - Run Everywhere) via `BPF_CORE_READ`. This means a single binary works across kernel versions — no per-kernel builds needed.
+# ... your build steps ...
 
-- **C BPF programs** (`profiler-ebpf/`) — compiled by clang during `build.rs`
-- **Rust userspace** (`profiler/`) — loads the compiled `.bpf.o` via aya's `EbpfLoader`, which resolves BTF relocations at load time
-- **libbpf** — git submodule providing `bpf_helpers.h` and `bpf_core_read.h`
-
-### Tracepoints
-
-| Program | Tracepoint | Purpose |
-|---------|-----------|---------|
-| `handle_sys_enter_execve` | `syscalls/sys_enter_execve` | Stash filename + argv before exec |
-| `handle_sched_process_exec` | `raw_tp/sched_process_exec` | Emit EXEC event with CO-RE access to `linux_binprm` |
-| `handle_sched_process_fork` | `sched/sched_process_fork` | Propagate ignored PIDs to children |
-| `handle_sched_process_exit` | `sched/sched_process_exit` | Emit EXIT event with duration + exit code |
-| `handle_sched_wakeup[_new]` | `sched/sched_wakeup[_new]` | Record wakeup timestamp |
-| `handle_sched_switch` | `sched/sched_switch` | Compute scheduler latency |
-| `handle_block_rq_issue` | `block/block_rq_issue` | Record I/O request start |
-| `handle_block_rq_complete` | `block/block_rq_complete` | Compute block I/O latency |
-| `handle_oom_kill` | `oom/mark_victim` | Capture OOM kill events |
-
-### Viewer
-
-The WASM viewer (`profiler-viewer/`) processes raw JSONL events into:
-- Process tree with parent-child relationships and span computation
-- Anomaly detection (OOM kills, high scheduler latency)
-- Per-process eBPF correlation (sched latency, block I/O stats)
-- System metrics timelines
-
-The HTML report uses ECharts for interactive gantt charts, scatter plots, and time-series graphs.
-
-## Build
-
-Requires Linux with BTF support (`/sys/kernel/btf/vmlinux`), clang, and Rust stable.
-
-```bash
-cd profiler && cargo build --release
+# Post phase runs automatically: stops profiler, uploads report artifact
 ```
 
-The build process:
-1. `build.rs` invokes clang to compile `profiler-ebpf/profiler.bpf.c` → `profiler.bpf.o`
-2. The compiled BPF object is embedded into the Rust binary via `include_bytes!`
-3. At runtime, aya's `EbpfLoader` resolves CO-RE relocations against the host kernel's BTF
+The action runs transparently. It starts an eBPF profiler at the beginning of
+your job and generates a report when the job finishes.
 
-## Usage
+No changes to your existing workflow steps needed.
 
-```bash
-# Basic - output events to stdout
-sudo ./target/release/profiler
+## What It Captures
 
-# Write events to a JSONL file
-sudo ./target/release/profiler --output /tmp/events.jsonl
-```
+| Data | Source | Description |
+|------|--------|-------------|
+| Process execution | `exec`/`fork`/`exit` tracepoints | Full process tree with durations, exit codes, args |
+| System metrics | `/proc` polling | CPU, memory, disk, network at configurable intervals |
+| Scheduler latency | `sched_wakeup`/`sched_switch` | Time between wakeup and actually running on CPU |
+| Block I/O latency | `block_rq_issue`/`complete` | Disk read/write latency per request |
+| OOM kills | `oom:mark_victim` | Which process was killed and memory state |
 
-### Filtering Processes
+## Report
 
-#### Ignore by command name
+The action uploads a self-contained HTML report as a GitHub Actions artifact.
+Open it in any browser, no server needed. It includes:
 
-`PROFILER_IGNORE` takes a comma-separated list of command names. Ignored processes and all their children (via fork cascade) are suppressed.
+- Process Gantt chart (execution timeline with parent-child nesting)
+- Process tree with critical path highlighting
+- System metrics charts (CPU, memory, disk, network)
+- Block I/O and scheduler latency scatter plots
+- OOM kill alerts with memory breakdown
+- Anomaly detection flags
 
-```bash
-sudo PROFILER_IGNORE="cpuUsage.sh,node" ./target/release/profiler --output /tmp/events.jsonl
-```
+## Inputs
 
-#### Ignore by cmdline pattern
+| Input | Default | Description |
+|-------|---------|-------------|
+| `metric_frequency` | `5` | System metrics polling interval in seconds (0 to disable) |
+| `proc_trace_sys_enable` | `false` | Include system processes (awk, cat, grep, etc.) |
+| `ignore_processes` | | Comma-separated command names to ignore (e.g. `node,sh`) |
+| `ignore_patterns` | | Comma-separated cmdline substrings to ignore (e.g. `vscode-server`) |
+| `enable_oom` | `true` | Enable OOM kill detection |
+| `enable_block_io` | `true` | Enable block I/O latency tracing |
+| `enable_sched_latency` | `true` | Enable scheduler latency tracing |
+| `sched_latency_threshold_ms` | `5` | Minimum scheduler latency in ms to report |
 
-`PROFILER_IGNORE_PATTERN` scans `/proc/*/cmdline` at startup for processes matching any of the given substrings, then seeds the eBPF ignore list with their PIDs. Children inherit the ignore via fork cascade.
+## Outputs
 
-```bash
-# Ignore all VSCode server processes and their children
-sudo PROFILER_IGNORE_PATTERN="vscode-server,ptyHost" ./target/release/profiler --output /tmp/events.jsonl
-```
+| Output | Description |
+|--------|-------------|
+| `artifact-id` | ID of the uploaded report artifact |
+| `artifact-url` | URL to download the report artifact |
 
-Both can be combined:
+## Requirements
 
-```bash
-sudo PROFILER_IGNORE="sh,node" \
-     PROFILER_IGNORE_PATTERN="vscode-server" \
-     ./target/release/profiler --output /tmp/events.jsonl
-```
+- **Linux runners only** - eBPF requires the Linux kernel. The action skips
+  gracefully on other platforms.
+- **Ubuntu 22.04+** - needs BTF support (`/sys/kernel/btf/vmlinux`). GitHub's
+  `ubuntu-latest` and `ubuntu-22.04`/`ubuntu-24.04` runners all work.
 
-### Log verbosity
+## How It Works
 
-Controlled via `RUST_LOG` (defaults to `info`):
+The profiler attaches to kernel tracepoints via eBPF at the start of your job.
+It captures every process, subprocess, and short-lived command with zero code
+changes and minimal overhead.
 
-```bash
-sudo RUST_LOG=debug ./target/release/profiler
-```
+The eBPF programs are written in C with CO-RE (Compile Once - Run Everywhere),
+so a single binary works across kernel versions. The userspace daemon is Rust,
+and the report viewer is a WASM module that processes events client-side.
 
-## Output Format
+For technical details, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-Events are written as JSON Lines (one JSON object per line):
+## License
 
-```json
-{"time_ns":123456789,"event_type":"exec","exit_code":0,"signal":0,"uid":1000,"gid":1000,"pid":4567,"tgid":4567,"ppid":1234,"name":"make","filename":"/usr/bin/make","args":["make","-j8"]}
-```
+[MIT](LICENSE)
 
-| Field | Description |
-|-------|-------------|
-| `time_ns` | Kernel timestamp (monotonic, nanoseconds) |
-| `event_type` | `"exec"`, `"exit"`, `"metrics"`, `"block_io"`, `"sched_latency"`, `"oom_kill"` |
-| `pid` | Process ID |
-| `tgid` | Thread group ID |
-| `ppid` | Parent process ID |
-| `uid` / `gid` | User / group ID |
-| `name` | Command name (max 16 chars) |
-| `filename` | Executable path |
-| `args` | Command arguments |
-| `exit_code` | Process exit code (exit events) |
-| `signal` | Signal number if killed (exit events) |
-| `signal_name` | Signal name, e.g. `SIGKILL` (exit events) |
-| `duration_ns` | Process duration in nanoseconds (exit events) |
+## Contributing
 
-## Verification
-
-### OOM Kill
-```bash
-sudo ./target/release/profiler --output tests/profiler-events.jsonl --enable-oom
-
-# In another terminal, trigger OOM:
-python3 -c "x = [bytearray(10**6) for _ in range(10000)]"
-
-jq 'select(.event_type == "oom_kill")' tests/profiler-events.jsonl
-```
-
-### Block I/O
-```bash
-sudo ./target/release/profiler --output tests/profiler-events.jsonl --enable-block-io
-
-# Generate I/O:
-dd if=/dev/zero of=/tmp/testfile bs=1M count=500 oflag=direct
-sync
-
-jq 'select(.event_type == "block_io") | {latency_ms: (.latency_ns / 1e6), op, name}' tests/profiler-events.jsonl
-```
-
-### Scheduler Latency
-```bash
-sudo ./target/release/profiler --output tests/profiler-events.jsonl --enable-sched-latency
-
-# Generate CPU contention:
-stress-ng --cpu 8 --timeout 10s
-
-jq 'select(.event_type == "sched_latency") | {latency_ms: (.latency_ns / 1e6), name}' tests/profiler-events.jsonl
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.

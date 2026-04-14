@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Dual MIT/GPL
 #if !defined(__SCHED_BPF_H)
 #define __SCHED_BPF_H
 

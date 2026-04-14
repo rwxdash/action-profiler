@@ -111,9 +111,6 @@ __tests__/runner/*
 # Tmp files
 tmp/
 
-# Docs
-docs/
-
 # Clangd
 .clangd
 compile_commands.json
