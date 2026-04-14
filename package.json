@@ -1,7 +1,7 @@
 {
     "name": "action-profiler",
     "description": "GitHub Action Profiler",
-    "version": "0.0.0",
+    "version": "1.0.0",
     "author": "Oguzhan Ozdemir",
     "type": "module",
     "private": true,

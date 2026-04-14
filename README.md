@@ -46,12 +46,14 @@ Open it in any browser, no server needed. It includes:
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `github_token` | `${{ github.token }}` | GitHub API token for PR comments |
 | `metric_frequency` | `5` | System metrics polling interval in seconds (0 to disable) |
-| `proc_trace_min_duration` | `-1` | Minimum process duration in ms to include (-1 = all) |
 | `proc_trace_sys_enable` | `false` | Include system processes (awk, cat, grep, etc.) |
-| `comment_on_pr` | `true` | Post summary as a PR comment |
-| `job_summary` | `true` | Add summary to GitHub job summary |
+| `ignore_processes` | | Comma-separated command names to ignore (e.g. `node,sh`) |
+| `ignore_patterns` | | Comma-separated cmdline substrings to ignore (e.g. `vscode-server`) |
+| `enable_oom` | `true` | Enable OOM kill detection |
+| `enable_block_io` | `true` | Enable block I/O latency tracing |
+| `enable_sched_latency` | `true` | Enable scheduler latency tracing |
+| `sched_latency_threshold_ms` | `5` | Minimum scheduler latency in ms to report |
 
 ## Outputs
 

@@ -48,17 +48,40 @@ export async function run(): Promise<void> {
     const metricFrequency = core.getInput('metric_frequency') || '5'
     const procTraceSysEnable =
       core.getInput('proc_trace_sys_enable') === 'true'
+    const ignoreProcesses = core.getInput('ignore_processes')
+    const ignorePatterns = core.getInput('ignore_patterns')
+    const enableOom = core.getInput('enable_oom') !== 'false'
+    const enableBlockIo = core.getInput('enable_block_io') !== 'false'
+    const enableSchedLatency = core.getInput('enable_sched_latency') !== 'false'
+    const schedThreshold = core.getInput('sched_latency_threshold_ms') || '5'
 
     const args: string[] = [
       profilerBin,
       '--output',
       outputPath,
       '--metric-frequency',
-      metricFrequency
+      metricFrequency,
+      '--sched-latency-threshold-ms',
+      schedThreshold
     ]
 
     if (procTraceSysEnable) {
       args.push('--no-default-ignore')
+    }
+    if (ignoreProcesses) {
+      args.push('--ignore', ignoreProcesses)
+    }
+    if (ignorePatterns) {
+      args.push('--ignore-pattern', ignorePatterns)
+    }
+    if (!enableOom) {
+      args.push('--no-oom')
+    }
+    if (!enableBlockIo) {
+      args.push('--no-block-io')
+    }
+    if (!enableSchedLatency) {
+      args.push('--no-sched-latency')
     }
 
     core.info(`Spawning profiler: sudo ${args.join(' ')}`)
