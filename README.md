@@ -15,6 +15,18 @@ Generates interactive HTML reports as downloadable artifacts.
 # Post phase runs automatically: stops profiler, uploads report artifact
 ```
 
+With options:
+
+```yaml
+- uses: rwxdash/action-profiler@v1
+  with:
+    metric_frequency: "10"
+    ignore_processes: "node,sh"
+    ignore_patterns: "vscode-server"
+    enable_oom: "false"
+    sched_latency_threshold_ms: "10"
+```
+
 The action runs transparently. It starts an eBPF profiler at the beginning of
 your job and generates a report when the job finishes.
 
