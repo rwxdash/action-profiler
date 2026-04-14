@@ -21,7 +21,11 @@
         "resolveJsonModule": true,
         "strict": true,
         "strictNullChecks": true,
-        "target": "ES2022"
+        "rootDir": "./src",
+        "target": "ES2022",
+        "types": [
+            "node"
+        ]
     },
     "exclude": [
         "__fixtures__",

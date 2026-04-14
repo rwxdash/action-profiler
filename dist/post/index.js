@@ -29662,6 +29662,19 @@ function setSecret(secret) {
     issueCommand('add-mask', {}, secret);
 }
 /**
+ * Gets the value of an input.
+ * Unless trimWhitespace is set to false in InputOptions, the value is also trimmed.
+ * Returns an empty string if the value is not defined.
+ *
+ * @param     name     name of the input to get
+ * @param     options  optional. See InputOptions.
+ * @returns   string
+ */
+function getInput(name, options) {
+    const val = process.env[`INPUT_${name.replace(/ /g, '_').toUpperCase()}`] || '';
+    return val.trim();
+}
+/**
  * Sets the value of an output.
  *
  * @param     name     name of the output to set
@@ -119086,7 +119099,7 @@ async function run() {
         const files = collectFiles(artifactDir);
         info(`Uploading ${files.length} files as "${ARTIFACT_NAME}"...`);
         const client = new DefaultArtifactClient();
-        const { id, size } = await client.uploadArtifact(ARTIFACT_NAME, files, artifactDir, { compressionLevel: 6, retentionDays: 3 });
+        const { id, size } = await client.uploadArtifact(ARTIFACT_NAME, files, artifactDir, { compressionLevel: 6, retentionDays: parseInt(getInput('artifact_retention_days') || '3', 10) });
         if (id) {
             const server = process.env.GITHUB_SERVER_URL || 'https://github.com';
             const repo = process.env.GITHUB_REPOSITORY || '';

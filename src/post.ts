@@ -64,7 +64,7 @@ export async function run(): Promise<void> {
       ARTIFACT_NAME,
       files,
       artifactDir,
-      { compressionLevel: 6, retentionDays: 3 }
+      { compressionLevel: 6, retentionDays: parseInt(core.getInput('artifact_retention_days') || '3', 10) }
     )
 
     if (id) {
