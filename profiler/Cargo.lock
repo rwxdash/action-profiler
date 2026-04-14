@@ -32,7 +32,7 @@ checksum = "9b34d609dfbaf33d6889b2b7106d3ca345eacad44200913df5ba02bfd31d2ba9"
 [[package]]
 name = "aya"
 version = "0.13.2"
-source = "git+https://github.com/aya-rs/aya#519abffef7064ae8a79502e49b8187a363af3ad5"
+source = "git+https://github.com/aya-rs/aya?rev=519abff#519abffef7064ae8a79502e49b8187a363af3ad5"
 dependencies = [
  "assert_matches",
  "aya-obj",
@@ -49,7 +49,7 @@ dependencies = [
 [[package]]
 name = "aya-obj"
 version = "0.2.2"
-source = "git+https://github.com/aya-rs/aya#519abffef7064ae8a79502e49b8187a363af3ad5"
+source = "git+https://github.com/aya-rs/aya?rev=519abff#519abffef7064ae8a79502e49b8187a363af3ad5"
 dependencies = [
  "bytes",
  "hashbrown",
