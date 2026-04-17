@@ -119131,25 +119131,44 @@ function buildArtifact(jsonlPath, outputDir) {
     const jsonlData = fs$1.readFileSync(jsonlPath, 'utf-8');
     // Inline ECharts (source HTML references ./echarts.min.js for local dev;
     // we inline it here so the artifact is self-contained and opens from file://)
-    html = html.replace(/<script src="\.\/echarts\.min\.js"><\/script>/, `<script>\n${echartsJs}\n</script>`);
+    html = replaceAnchor(html, 'ECHARTS', `<script>\n${echartsJs}\n</script>`);
     // Strip export keywords from JS glue (inlined into the module script)
     const jsInline = jsGlue
         .replace(/^export function /gm, 'function ')
         .replace(/^export \{[^}]*\};?\s*$/gm, '');
-    // Replace the import line with inlined JS glue
-    html = html.replace("import init, { process_jsonl } from './pkg/profiler_viewer.js';", `// ── Inlined WASM viewer (self-contained) ──\n${jsInline}\n        const init = __wbg_init;`);
-    // Replace `await init()` with base64 WASM loading
-    // Pass as object ({ module_or_path }) to match current wasm-bindgen API and avoid deprecation warning
-    html = html.replace('await init();', [
+    // Replace the three AP:* anchored blocks in the source HTML. See the
+    // `<<< AP:NAME` ... `>>> AP:NAME` markers in profiler/tests/index.html.
+    // Anchor comments survive any code formatter so the artifact build is not
+    // coupled to whitespace or semicolon decisions.
+    html = replaceAnchor(html, 'WASM_IMPORT', `// ── Inlined WASM viewer (self-contained) ──\n${jsInline}\n        const init = __wbg_init;`);
+    html = replaceAnchor(html, 'WASM_INIT', [
         'const __wasmB64 = "' + wasmBase64 + '";',
         '        const __wasmBin = Uint8Array.from(atob(__wasmB64), c => c.charCodeAt(0));',
         '        await init({ module_or_path: __wasmBin.buffer });'
     ].join('\n'));
-    // Replace the fetch('profiler-events.jsonl') block with inline JSONL data
-    html = html.replace(/fetch\('profiler-events\.jsonl'\)\s*\n\s*\.then\(r => r\.text\(\)\)\s*\n\s*\.then\(text => \{ if \(text\.trim\(\)\) loadJsonl\(text\); \}\)\s*\n\s*\.catch\(\(\) => \{ \}\);/, `loadJsonl(${JSON.stringify(jsonlData)});`);
+    html = replaceAnchor(html, 'JSONL_AUTOLOAD', `loadJsonl(${JSON.stringify(jsonlData)});`);
     fs$1.writeFileSync(path$2.join(outputDir, 'index.html'), html);
     // Include raw JSONL for offline analysis
     fs$1.copyFileSync(jsonlPath, path$2.join(outputDir, 'profiler-events.jsonl'));
+}
+// Replace the region between `<<< AP:<name>` and `>>> AP:<name>` anchor
+// comments with `replacement`. The anchor lines themselves are removed too.
+// Throws if either anchor is missing or out of order - surfaces build problems
+// in CI instead of shipping a broken artifact.
+function replaceAnchor(html, name, replacement) {
+    const start = html.indexOf(`<<< AP:${name}`);
+    const end = html.indexOf(`>>> AP:${name}`);
+    if (start < 0 || end < 0 || end < start) {
+        throw new Error(`buildArtifact: anchor AP:${name} not found (or malformed) in source HTML`);
+    }
+    // Expand the cut to the full lines containing the anchor comments so we
+    // don't leave a dangling `//` or trailing newline in the artifact.
+    const lineStart = html.lastIndexOf('\n', start) + 1;
+    const endMarkerEnd = end + `>>> AP:${name}`.length;
+    const lineEnd = html.indexOf('\n', endMarkerEnd);
+    return (html.slice(0, lineStart) +
+        replacement +
+        (lineEnd < 0 ? '' : html.slice(lineEnd)));
 }
 function collectFiles(dir) {
     const files = [];

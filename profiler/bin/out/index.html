@@ -8,8 +8,11 @@
          scripts/build.sh copies node_modules/echarts/dist/echarts.min.js into
          this directory for local dev (`python3 -m http.server` inside tests/)
          and into profiler/bin/out/ for the release artifact. src/post.ts then
-         inlines the bundle directly into the artifact HTML. -->
+         inlines the bundle directly into the artifact HTML via the AP:ECHARTS
+         anchor below. -->
+    <!-- <<< AP:ECHARTS -->
     <script src="./echarts.min.js"></script>
+    <!-- >>> AP:ECHARTS -->
     <script>
         // Theme init (blocking, runs before paint to avoid FOUC).
         // Follows the OS preference - no persistence, since each run produces a
@@ -863,9 +866,18 @@
 
     <script type="module">
         // ── WASM Initialization ─────────────────────────────────────────────────────
+        //
+        // The three blocks marked with AP:* anchor comments below are replaced by
+        // src/post.ts when building the release artifact (inlined WASM + JSONL).
+        // Do not rename, remove, or nest the anchors - see src/post.ts.
 
+        // <<< AP:WASM_IMPORT
         import init, { process_jsonl } from './pkg/profiler_viewer.js'
+        // >>> AP:WASM_IMPORT
+
+        // <<< AP:WASM_INIT
         await init()
+        // >>> AP:WASM_INIT
 
         // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -3181,12 +3193,14 @@
 
         // ── Auto-load default file ──────────────────────────────────────────────────
 
+        // <<< AP:JSONL_AUTOLOAD
         fetch('profiler-events.jsonl')
             .then((r) => r.text())
             .then((text) => {
                 if (text.trim()) loadJsonl(text)
             })
             .catch(() => { })
+        // >>> AP:JSONL_AUTOLOAD
 
         // ── Table Sorting ───────────────────────────────────────────────────────────
 
