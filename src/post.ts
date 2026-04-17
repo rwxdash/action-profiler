@@ -44,7 +44,7 @@ export async function run(): Promise<void> {
     const lineCount = fs
       .readFileSync(outputPath, 'utf-8')
       .split('\n')
-      .filter(l => l.trim()).length
+      .filter((l) => l.trim()).length
     core.info(`Profiler output: ${jsonlSize} bytes (${lineCount} events)`)
 
     // Build artifact directory: viewer + WASM + JSONL
@@ -64,7 +64,13 @@ export async function run(): Promise<void> {
       ARTIFACT_NAME,
       files,
       artifactDir,
-      { compressionLevel: 6, retentionDays: parseInt(core.getInput('artifact_retention_days') || '3', 10) }
+      {
+        compressionLevel: 6,
+        retentionDays: parseInt(
+          core.getInput('artifact_retention_days') || '3',
+          10
+        )
+      }
     )
 
     if (id) {
@@ -102,9 +108,10 @@ function buildArtifact(jsonlPath: string, outputDir: string): void {
     .toString('base64')
   const jsonlData = fs.readFileSync(jsonlPath, 'utf-8')
 
-  // Inline ECharts (replaces CDN script tag to avoid tracking prevention on file://)
+  // Inline ECharts (source HTML references ./echarts.min.js for local dev;
+  // we inline it here so the artifact is self-contained and opens from file://)
   html = html.replace(
-    /<script src="https:\/\/cdn\.jsdelivr\.net\/npm\/echarts@5\/dist\/echarts\.min\.js"><\/script>/,
+    /<script src="\.\/echarts\.min\.js"><\/script>/,
     `<script>\n${echartsJs}\n</script>`
   )
 
@@ -120,12 +127,13 @@ function buildArtifact(jsonlPath: string, outputDir: string): void {
   )
 
   // Replace `await init()` with base64 WASM loading
+  // Pass as object ({ module_or_path }) to match current wasm-bindgen API and avoid deprecation warning
   html = html.replace(
     'await init();',
     [
       'const __wasmB64 = "' + wasmBase64 + '";',
       '        const __wasmBin = Uint8Array.from(atob(__wasmB64), c => c.charCodeAt(0));',
-      '        await init(__wasmBin.buffer);'
+      '        await init({ module_or_path: __wasmBin.buffer });'
     ].join('\n')
   )
 
@@ -159,7 +167,7 @@ async function waitForExit(pid: string, timeoutMs: number): Promise<void> {
   while (Date.now() - start < timeoutMs) {
     try {
       await exec.exec('sudo', ['kill', '-0', pid], { silent: true })
-      await new Promise(r => setTimeout(r, 300))
+      await new Promise((r) => setTimeout(r, 300))
     } catch {
       return // process exited
     }

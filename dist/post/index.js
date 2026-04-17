@@ -119089,7 +119089,7 @@ async function run() {
         const lineCount = fs$1
             .readFileSync(outputPath, 'utf-8')
             .split('\n')
-            .filter(l => l.trim()).length;
+            .filter((l) => l.trim()).length;
         info(`Profiler output: ${jsonlSize} bytes (${lineCount} events)`);
         // Build artifact directory: viewer + WASM + JSONL
         const artifactDir = path$2.join(process.env.RUNNER_TEMP || '/tmp', 'profiler-artifact');
@@ -119099,7 +119099,10 @@ async function run() {
         const files = collectFiles(artifactDir);
         info(`Uploading ${files.length} files as "${ARTIFACT_NAME}"...`);
         const client = new DefaultArtifactClient();
-        const { id, size } = await client.uploadArtifact(ARTIFACT_NAME, files, artifactDir, { compressionLevel: 6, retentionDays: parseInt(getInput('artifact_retention_days') || '3', 10) });
+        const { id, size } = await client.uploadArtifact(ARTIFACT_NAME, files, artifactDir, {
+            compressionLevel: 6,
+            retentionDays: parseInt(getInput('artifact_retention_days') || '3', 10)
+        });
         if (id) {
             const server = process.env.GITHUB_SERVER_URL || 'https://github.com';
             const repo = process.env.GITHUB_REPOSITORY || '';
@@ -119126,8 +119129,9 @@ function buildArtifact(jsonlPath, outputDir) {
         .readFileSync(path$2.join(binOut, 'pkg/profiler_viewer_bg.wasm'))
         .toString('base64');
     const jsonlData = fs$1.readFileSync(jsonlPath, 'utf-8');
-    // Inline ECharts (replaces CDN script tag to avoid tracking prevention on file://)
-    html = html.replace(/<script src="https:\/\/cdn\.jsdelivr\.net\/npm\/echarts@5\/dist\/echarts\.min\.js"><\/script>/, `<script>\n${echartsJs}\n</script>`);
+    // Inline ECharts (source HTML references ./echarts.min.js for local dev;
+    // we inline it here so the artifact is self-contained and opens from file://)
+    html = html.replace(/<script src="\.\/echarts\.min\.js"><\/script>/, `<script>\n${echartsJs}\n</script>`);
     // Strip export keywords from JS glue (inlined into the module script)
     const jsInline = jsGlue
         .replace(/^export function /gm, 'function ')
@@ -119135,10 +119139,11 @@ function buildArtifact(jsonlPath, outputDir) {
     // Replace the import line with inlined JS glue
     html = html.replace("import init, { process_jsonl } from './pkg/profiler_viewer.js';", `// ── Inlined WASM viewer (self-contained) ──\n${jsInline}\n        const init = __wbg_init;`);
     // Replace `await init()` with base64 WASM loading
+    // Pass as object ({ module_or_path }) to match current wasm-bindgen API and avoid deprecation warning
     html = html.replace('await init();', [
         'const __wasmB64 = "' + wasmBase64 + '";',
         '        const __wasmBin = Uint8Array.from(atob(__wasmB64), c => c.charCodeAt(0));',
-        '        await init(__wasmBin.buffer);'
+        '        await init({ module_or_path: __wasmBin.buffer });'
     ].join('\n'));
     // Replace the fetch('profiler-events.jsonl') block with inline JSONL data
     html = html.replace(/fetch\('profiler-events\.jsonl'\)\s*\n\s*\.then\(r => r\.text\(\)\)\s*\n\s*\.then\(text => \{ if \(text\.trim\(\)\) loadJsonl\(text\); \}\)\s*\n\s*\.catch\(\(\) => \{ \}\);/, `loadJsonl(${JSON.stringify(jsonlData)});`);
@@ -119164,7 +119169,7 @@ async function waitForExit(pid, timeoutMs) {
     while (Date.now() - start < timeoutMs) {
         try {
             await exec('sudo', ['kill', '-0', pid], { silent: true });
-            await new Promise(r => setTimeout(r, 300));
+            await new Promise((r) => setTimeout(r, 300));
         }
         catch {
             return; // process exited

@@ -5,6 +5,8 @@ execution, system metrics, scheduler latency, block I/O, and OOM events.
 
 Generates interactive HTML reports as downloadable artifacts.
 
+![Action Profiler dashboard showing summary bar, system metrics, execution tree, and eBPF insights](docs/images/dashboard-example.png)
+
 ## Quick Start
 
 ```yaml

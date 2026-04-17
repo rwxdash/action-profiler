@@ -97,6 +97,9 @@ Thumbs.db
 # WASM build output symlink
 profiler/tests/pkg
 
+# Vendored ECharts (copied fresh from node_modules by scripts/build.sh)
+profiler/tests/echarts.min.js
+
 # Compiled artifacts (built fresh in CI, committed by release workflow)
 profiler/bin/profiler
 profiler/bin/out/pkg/profiler_viewer_bg.wasm
